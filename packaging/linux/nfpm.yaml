@@ -1,0 +1,40 @@
+name: nxaterm
+arch: ${GOARCH}
+platform: linux
+version: ${VERSION}
+release: "1"
+section: net
+priority: optional
+maintainer: Alexandre Garcia (alekhine-dev)
+vendor: Alexandre Garcia
+description: Gerenciador de sessões SSH com terminal e SFTP
+license: Proprietary
+
+contents:
+  - src: ./bin/nxaterm
+    dst: /usr/bin/nxaterm
+    file_info:
+      mode: 0755
+  - src: ./pkg/nxaterm.png
+    dst: /usr/share/icons/hicolor/512x512/apps/nxaterm.png
+  - src: ./pkg/nxaterm.desktop
+    dst: /usr/share/applications/nxaterm.desktop
+
+# GTK 3 + WebKitGTK 4.1: presente no Ubuntu 22.04+, Debian 12+, Fedora, openSUSE e Arch.
+depends:
+  - libgtk-3-0 | libgtk-3-0t64
+  - libwebkit2gtk-4.1-0
+
+overrides:
+  rpm:
+    depends:
+      - libgtk-3.so.0()(64bit)
+      - libwebkit2gtk-4.1.so.0()(64bit)
+  archlinux:
+    depends:
+      - gtk3
+      - webkit2gtk-4.1
+
+scripts:
+  postinstall: ./pkg/postinstall.sh
+  postremove: ./pkg/postinstall.sh

@@ -1,0 +1,5 @@
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+. "$HERE/usr/share/nxaterm/deps-check.sh"
+check_webkit || exit 1
+exec "$HERE/usr/bin/nxaterm" "$@"

@@ -1,0 +1,60 @@
+name: Publicar versão
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+
+  linux:
+    uses: ./.github/workflows/build-linux.yml
+
+  publicar:
+    needs: [windows, linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v4
+
+      - name: Baixar os arquivos compilados
+        uses: actions/download-artifact@v4
+        with:
+          path: artefatos
+
+      - name: Reunir os arquivos da versão
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          mkdir -p versao
+          cp artefatos/nxaterm-windows-installer/nxaterm-amd64-installer.exe "versao/NxATerm-$VERSION-windows-setup.exe"
+          cp artefatos/nxaterm-windows/nxaterm.exe "versao/NxATerm-$VERSION-windows-portatil.exe"
+          cp artefatos/nxaterm-linux/*.AppImage artefatos/nxaterm-linux/*.deb artefatos/nxaterm-linux/*.rpm artefatos/nxaterm-linux/*.pkg.tar.* artefatos/nxaterm-linux/*.tar.gz versao/
+          (cd versao && sha256sum * > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Criar a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          TAG="v$VERSION"
+          DEB="$(basename versao/*.deb)"; RPM="$(basename versao/*.rpm)"; ARCH="$(basename versao/*.pkg.tar.*)"
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          cat > notas.md <<NOTAS
+          ## NxATerm $VERSION
+
+          Gerenciador de sessões SSH, SFTP, Telnet, Serial e shell local, com MultiExec, túneis e macros.
+
+          **Windows 10/11**: baixe \`NxATerm-$VERSION-windows-setup.exe\` e execute. Instala só para o seu usuário. Há também a versão portátil.
+
+          **Linux** (precisa do WebKitGTK 4.1: Ubuntu 22.04+, Debian 12+, Fedora, openSUSE, Arch):
+          - Debian / Ubuntu / Mint: \`sudo apt install ./$DEB\`
+          - Fedora / openSUSE / RHEL: \`sudo dnf install ./$RPM\`
+          - Arch / Manjaro: \`sudo pacman -U $ARCH\`
+          - Qualquer distro: AppImage (\`chmod +x\` e execute) ou o \`.tar.gz\` com \`install.sh\`
+
+          Os instaladores não são assinados digitalmente; o Windows pode mostrar um aviso de editor desconhecido. Confira os arquivos com \`SHA256SUMS\`.
+          NOTAS
+          sed -i 's/^          //' notas.md
+          gh release create "$TAG" versao/* --target "$GITHUB_SHA" --title "NxATerm $VERSION" --notes-file notas.md

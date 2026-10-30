@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=NxATerm
+GenericName=Cliente SSH
+Comment=Gerenciador de sessões SSH com terminal e SFTP
+Exec=nxaterm
+Icon=nxaterm
+Terminal=false
+Categories=Network;RemoteAccess;System;TerminalEmulator;
+Keywords=ssh;sftp;telnet;serial;terminal;
+StartupWMClass=nxaterm

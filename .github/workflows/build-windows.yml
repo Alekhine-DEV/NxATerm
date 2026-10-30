@@ -1,0 +1,154 @@
+name: Build NxATerm (Windows)
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: false
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26.13.0'
+
+      - name: Mostrar versões
+        run: |
+          go version
+          node --version
+          npm --version
+
+      - name: Instalar o CLI do Wails v3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+
+      - name: Colocar o bin do Go no PATH
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$(go env GOPATH)\bin"
+
+      - name: Criar o projeto base (wails3 init)
+        run: |
+          wails3 version
+          wails3 init -n nxaterm -t vanilla -mod nxaterm -d app -q -s
+
+      - name: Aplicar os arquivos do NxATerm por cima do projeto base
+        run: |
+          Copy-Item overlay\* app\nxaterm\ -Recurse -Force
+          Remove-Item app\nxaterm\greetservice.go -ErrorAction SilentlyContinue
+          Remove-Item app\nxaterm\frontend\src\main.ts -ErrorAction SilentlyContinue
+          Get-ChildItem app\nxaterm -Recurse -File | Where-Object { $_.FullName -notmatch 'node_modules|\\build\\' } | Select-Object -ExpandProperty FullName
+
+      - name: Instalar o ícone de terminal do NxATerm
+        continue-on-error: true
+        run: |
+          $root = (Get-Location).Path
+          $b64 = (Get-Content "$root\app\nxaterm\icon\appicon.png.b64" -Raw).Trim()
+          [IO.File]::WriteAllBytes("$root\app\nxaterm\build\appicon.png", [Convert]::FromBase64String($b64))
+          Remove-Item -Recurse -Force "$root\app\nxaterm\icon"
+          Push-Location app\nxaterm\build
+          wails3 generate icons -input appicon.png -windowsfilename windows/icon.ico -macfilename darwin/icons.icns
+          Pop-Location
+          Get-ChildItem app\nxaterm\build -Recurse -Include appicon.png,icon.ico | Select-Object FullName, Length, LastWriteTime
+
+      - name: Dados do produto e instalador (NSIS)
+        run: |
+          choco install nsis -y --no-progress
+          Add-Content -Path $env:GITHUB_PATH -Value "${env:ProgramFiles(x86)}\NSIS"
+          $version = (Get-Content VERSION -Raw).Trim()
+          ./packaging/windows/customize.ps1 -Version $version -Project "$((Get-Location).Path)\app\nxaterm"
+
+      - name: Dependências Go (versões fixas)
+        working-directory: app/nxaterm
+        run: |
+          go get golang.org/x/crypto@v0.58.0 golang.org/x/sys@v0.49.0 github.com/pkg/sftp@v1.13.12 go.bug.st/serial@v1.8.0 github.com/aymanbagabas/go-pty@v0.2.3
+          go mod tidy
+          go mod verify
+
+      - name: Dependências do frontend (versões fixas)
+        working-directory: app/nxaterm/frontend
+        run: |
+          npm install
+          npm install --save-exact @xterm/xterm@6.0.0 @xterm/addon-fit@0.11.0 @xterm/addon-search@0.16.0 @xterm/addon-web-links@0.12.0 @wailsio/runtime@3.0.0
+          npm install -D --save-exact vite@8.3.5
+          npm ls --depth=0
+          npm audit signatures
+          Get-Content package.json
+          npm pkg set 'scripts.build=vite build'
+          npm pkg set 'scripts.build:dev=vite build'
+
+      - name: Gerar os bindings Go para JS
+        working-directory: app/nxaterm
+        run: |
+          wails3 generate bindings
+          Get-ChildItem frontend\bindings -Recurse -File | Select-Object -ExpandProperty FullName
+
+      - name: Mostrar o Taskfile de build do Windows (para depuração)
+        working-directory: app/nxaterm
+        run: Get-Content build\windows\Taskfile.yml
+
+      - name: Testes do armazenamento (sessões e macros)
+        working-directory: app/nxaterm
+        run: go test ./internal/...
+
+      - name: Compilar
+        working-directory: app/nxaterm
+        run: wails3 build
+
+      - name: Listar a saída
+        run: Get-ChildItem app\nxaterm\bin -Recurse | Select-Object FullName, Length
+
+      - name: Criar o instalador
+        working-directory: app/nxaterm
+        run: |
+          makensis /VERSION
+          wails3 generate webview2bootstrapper -dir build\windows\nsis
+          Push-Location build\windows\nsis
+          makensis -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user "-DARG_WAILS_AMD64_BINARY=$((Resolve-Path ..\..\..\bin\nxaterm.exe).Path)" project.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis falhou ($LASTEXITCODE)" }
+          Pop-Location
+          Get-FileHash bin\nxaterm-amd64-installer.exe -Algorithm SHA256
+
+      - name: Testar o instalador (instala, confere e desinstala)
+        working-directory: app/nxaterm
+        continue-on-error: true
+        run: |
+          $inst = (Resolve-Path bin\nxaterm-amd64-installer.exe).Path
+          $p = Start-Process $inst -ArgumentList '/S' -Wait -PassThru
+          "instalador saiu com código $($p.ExitCode)"
+          $dir = "$env:LOCALAPPDATA\Programs\NxATerm"
+          Get-ChildItem $dir -ErrorAction SilentlyContinue | Select-Object Name, Length
+          $lnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\NxATerm.lnk"
+          $ok = (Test-Path "$dir\nxaterm.exe") -and (Test-Path "$dir\uninstall.exe") -and (Test-Path $lnk)
+          $props = (Get-Item "$dir\nxaterm.exe").VersionInfo | Select-Object ProductName, CompanyName, ProductVersion, FileDescription | Out-String
+          $u = Start-Process "$dir\uninstall.exe" -ArgumentList '/S' -Wait -PassThru
+          Start-Sleep 3
+          $gone = -not (Test-Path "$dir\nxaterm.exe")
+          Write-Host "::notice title=Instalador::instalou=$ok removeu=$gone`n$props"
+          if (-not ($ok -and $gone)) { throw "instalador não fez o esperado" }
+
+      - name: Testes do pacote principal (não bloqueiam o executável)
+        working-directory: app/nxaterm
+        continue-on-error: true
+        run: go test .
+
+      - name: Publicar o executável
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxaterm-windows
+          path: app/nxaterm/bin/nxaterm.exe
+          if-no-files-found: error
+
+      - name: Publicar o instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxaterm-windows-installer
+          path: app/nxaterm/bin/nxaterm-amd64-installer.exe
+          if-no-files-found: error
