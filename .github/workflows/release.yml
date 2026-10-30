@@ -30,7 +30,11 @@ jobs:
           mkdir -p versao
           cp artefatos/nxaterm-windows-installer/nxaterm-amd64-installer.exe "versao/NxATerm-$VERSION-windows-setup.exe"
           cp artefatos/nxaterm-windows/nxaterm.exe "versao/NxATerm-$VERSION-windows-portatil.exe"
-          cp artefatos/nxaterm-linux/*.AppImage artefatos/nxaterm-linux/*.deb artefatos/nxaterm-linux/*.rpm artefatos/nxaterm-linux/*.pkg.tar.* artefatos/nxaterm-linux/*.tar.gz versao/
+          L=artefatos/nxaterm-linux
+          cp "$L"/*.AppImage "$L"/*.tar.gz versao/
+          cp "$L"/nxaterm.deb "versao/nxaterm_${VERSION}_amd64.deb"
+          cp "$L"/nxaterm.rpm "versao/nxaterm-${VERSION}-1.x86_64.rpm"
+          cp "$L"/nxaterm.pkg.tar.zst "versao/nxaterm-${VERSION}-1-x86_64.pkg.tar.zst"
           (cd versao && sha256sum * > SHA256SUMS && cat SHA256SUMS)
 
       - name: Criar a release
