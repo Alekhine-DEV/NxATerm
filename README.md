@@ -17,14 +17,3 @@ Na página de **Releases** estão o instalador do Windows e os pacotes do Linux.
 - Portas seriais: o usuário precisa estar no grupo `dialout` (ou `uucp` no Arch).
 
 Os instaladores não são assinados digitalmente: o Windows pode avisar "editor desconhecido". Confira os arquivos com o `SHA256SUMS` da release.
-
-## Estrutura
-
-- `overlay/` – código do app (veja `overlay/README.md`)
-- `packaging/` – instalador do Windows e arquivos dos pacotes Linux
-- `VERSION` – versão usada no instalador e nos pacotes
-- `.github/workflows/` – compilação no GitHub Actions (`build-windows.yml`, `build-linux.yml`) e publicação de versões (`release.yml`)
-
-## Publicar uma versão
-
-Edite o arquivo `VERSION` e rode, em **Actions**, o workflow **Publicar versão**. Ele compila Windows e Linux e cria a release `v<versão>` com todos os arquivos.
