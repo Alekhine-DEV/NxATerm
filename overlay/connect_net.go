@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"nxaterm/internal/netx"
@@ -373,7 +374,9 @@ func setupX11(client *ssh.Client, sess *ssh.Session) {
 
 // ------------------------------------------------------------------ codificação
 
-// wrapEncoding converte o terminal de/para a codificação escolhida (GBK, Shift-JIS, Latin-1...).
+// wrapEncoding prepara a codificação escolhida (GBK, Shift-JIS, Latin-1...). O que o usuário digita é
+// convertido aqui; a saída do servidor segue em bytes crus e a interface a decodifica (TextDecoder),
+// assim o Zmodem recebe os dados sem nenhuma alteração.
 func wrapEncoding(t *termSession, name string) error {
 	if name == "" || t.out == nil {
 		return nil
@@ -382,11 +385,25 @@ func wrapEncoding(t *termSession, name string) error {
 	if err != nil {
 		return fmt.Errorf("codificação não suportada: %q", name)
 	}
-	t.out = transform.NewReader(t.out, enc.NewDecoder())
 	if t.w != nil {
-		t.w = transform.NewWriter(t.w, enc.NewEncoder())
+		if t.wRaw == nil {
+			t.wRaw = t.w
+		}
+		t.w = &lockedWriter{w: transform.NewWriter(t.w, enc.NewEncoder())}
 	}
 	return nil
+}
+
+// lockedWriter serializa as escritas (o conversor de codificação guarda estado interno).
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }
 
 // CheckEncoding diz se o nome da codificação é conhecido (para a janela de sessão).

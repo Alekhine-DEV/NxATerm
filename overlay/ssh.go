@@ -34,8 +34,10 @@ type termSession struct {
 	shell  *ssh.Session
 
 	// comum aos terminais
-	w       io.Writer // entrada do terminal (nil em SFTP)
-	out     io.Reader // saída do terminal (nil em SFTP)
+	w       io.Writer           // entrada do terminal (nil em SFTP)
+	out     io.Reader           // saída do terminal (nil em SFTP); com codificação escolhida, segue em bytes crus e a interface decodifica
+	wRaw    io.Writer           // escreve bytes sem conversão de codificação (Zmodem); nil = igual a w
+	setRaw  func(on bool) error // liga/desliga o modo binário do protocolo (Telnet); nil = nada a fazer
 	resize  func(cols, rows int) error
 	wait    func() error // bloqueia até a sessão acabar; nil = até a leitura terminar
 	closers []func()     // liberam os recursos específicos do tipo

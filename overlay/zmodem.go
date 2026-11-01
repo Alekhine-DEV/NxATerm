@@ -76,8 +76,26 @@ func (a *TermService) WriteBytes(id, b64 string) error {
 	if err != nil {
 		return err
 	}
-	_, err = t.w.Write(data)
+	w := t.wRaw
+	if w == nil {
+		w = t.w
+	}
+	_, err = w.Write(data)
 	return err
+}
+
+// SetRawMode liga ou desliga o modo binário da sessão: o Zmodem liga ao começar uma transferência e
+// desliga ao terminar. No Telnet negocia a opção BINARY (sem isso o servidor altera os CR); nos
+// outros tipos não há nada a fazer.
+func (a *TermService) SetRawMode(id string, on bool) error {
+	t, err := a.term(id)
+	if err != nil {
+		return err
+	}
+	if t.setRaw == nil {
+		return nil
+	}
+	return t.setRaw(on)
 }
 
 // ZFileInfo descreve um arquivo escolhido para enviar.

@@ -6,6 +6,7 @@ package telnet
 import (
 	"net"
 	"sync"
+	"time"
 )
 
 // Bytes de comando do protocolo.
@@ -21,10 +22,11 @@ const (
 
 // Opções que o NxATerm entende.
 const (
-	optEcho  = 1
-	optSGA   = 3  // suppress go-ahead
-	optTType = 24 // terminal type
-	optNAWS  = 31 // tamanho da janela
+	optEcho   = 1
+	optBinary = 0  // transmissão binária (sem CR NUL)
+	optSGA    = 3  // suppress go-ahead
+	optTType  = 24 // terminal type
+	optNAWS   = 31 // tamanho da janela
 )
 
 const (
@@ -48,6 +50,17 @@ type Filter struct {
 	termType string
 	cols     int
 	rows     int
+
+	wantBinary bool // pedimos o modo binário (Zmodem)
+	askedDo    bool // já enviamos DO BINARY
+	askedWill  bool // já enviamos WILL BINARY
+}
+
+// binaryOut diz se estamos enviando em binário (sem CR NUL).
+func (f *Filter) binaryOut() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.us[optBinary]
 }
 
 // NewFilter cria o filtro. termType é o valor enviado quando o servidor pergunta.
@@ -67,7 +80,7 @@ func (f *Filter) Process(in []byte) (data, reply []byte) {
 			switch {
 			case b == iac:
 				f.state = stIAC
-			case f.lastCR && b == 0:
+			case f.lastCR && b == 0 && !f.him[optBinary]:
 				// CR NUL = um CR "puro" (RFC 854); o NUL não é para exibir
 				f.lastCR = false
 			default:
@@ -115,6 +128,9 @@ func (f *Filter) Process(in []byte) (data, reply []byte) {
 }
 
 func (f *Filter) negotiate(reply []byte, cmd, opt byte) []byte {
+	if opt == optBinary {
+		return f.negotiateBinary(reply, cmd)
+	}
 	switch cmd {
 	case will:
 		if opt == optEcho || opt == optSGA {
@@ -149,6 +165,80 @@ func (f *Filter) negotiate(reply []byte, cmd, opt byte) []byte {
 		}
 	}
 	return reply
+}
+
+// negotiateBinary trata a opção BINARY (RFC 856). Só aceitamos quando pedimos (SetBinary).
+func (f *Filter) negotiateBinary(reply []byte, cmd byte) []byte {
+	switch cmd {
+	case will: // o servidor quer enviar em binário
+		if f.wantBinary {
+			f.him[optBinary] = true
+			if !f.askedDo {
+				f.askedDo = true
+				return append(reply, iac, do, optBinary)
+			}
+			return reply
+		}
+		return append(reply, iac, dont, optBinary)
+	case wont:
+		if f.him[optBinary] {
+			f.him[optBinary] = false
+			f.askedDo = false
+			return append(reply, iac, dont, optBinary)
+		}
+	case do: // o servidor aceita receber em binário
+		if f.wantBinary {
+			f.us[optBinary] = true
+			if !f.askedWill {
+				f.askedWill = true
+				return append(reply, iac, will, optBinary)
+			}
+			return reply
+		}
+		return append(reply, iac, wont, optBinary)
+	case dont:
+		if f.us[optBinary] {
+			f.us[optBinary] = false
+			f.askedWill = false
+			return append(reply, iac, wont, optBinary)
+		}
+	}
+	return reply
+}
+
+// SetBinary liga ou desliga o pedido de modo binário e devolve o que enviar ao servidor.
+func (f *Filter) SetBinary(on bool) []byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.wantBinary = on
+	var msg []byte
+	if on {
+		if !f.askedDo {
+			f.askedDo = true
+			msg = append(msg, iac, do, optBinary)
+		}
+		if !f.askedWill {
+			f.askedWill = true
+			msg = append(msg, iac, will, optBinary)
+		}
+		return msg
+	}
+	if f.askedDo {
+		f.askedDo, f.him[optBinary] = false, false
+		msg = append(msg, iac, dont, optBinary)
+	}
+	if f.askedWill {
+		f.askedWill, f.us[optBinary] = false, false
+		msg = append(msg, iac, wont, optBinary)
+	}
+	return msg
+}
+
+// BinaryReady diz se o servidor confirmou o modo binário nos dois sentidos.
+func (f *Filter) BinaryReady() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.him[optBinary] && f.us[optBinary]
 }
 
 func (f *Filter) subnegotiate(reply []byte) []byte {
@@ -189,14 +279,19 @@ func (f *Filter) Resize(cols, rows int) []byte {
 
 // Encode prepara o que o usuário digitou para ir ao servidor: duplica o 0xFF e
 // transforma o CR (tecla Enter) em CR NUL, como o cliente telnet clássico.
-func Encode(data []byte) []byte {
+func Encode(data []byte) []byte { return encode(data, false) }
+
+// EncodeBinary só duplica o 0xFF: os bytes seguem como estão (modo binário, usado pelo Zmodem).
+func EncodeBinary(data []byte) []byte { return encode(data, true) }
+
+func encode(data []byte, binary bool) []byte {
 	out := make([]byte, 0, len(data)+4)
 	for i := 0; i < len(data); i++ {
 		b := data[i]
 		switch {
 		case b == iac:
 			out = append(out, iac, iac)
-		case b == '\r':
+		case b == '\r' && !binary:
 			out = append(out, '\r')
 			if i+1 < len(data) && data[i+1] == '\n' {
 				continue // CR LF já é uma quebra de linha completa
@@ -249,9 +344,13 @@ func (t *Conn) Read(p []byte) (int, error) {
 	}
 }
 
-// Write envia texto digitado (com escape de IAC e CR).
+// Write envia texto digitado (com escape de IAC e CR). Em modo binário só o IAC é duplicado.
 func (t *Conn) Write(p []byte) (int, error) {
-	if _, err := t.writeRaw(Encode(p)); err != nil {
+	enc := Encode
+	if t.f.binaryOut() {
+		enc = EncodeBinary
+	}
+	if _, err := t.writeRaw(enc(p)); err != nil {
 		return 0, err
 	}
 	return len(p), nil
@@ -261,6 +360,35 @@ func (t *Conn) writeRaw(b []byte) (int, error) {
 	t.wmu.Lock()
 	defer t.wmu.Unlock()
 	return t.c.Write(b)
+}
+
+// WriteBinary envia bytes sem converter CR (só duplica o 0xFF). É o caminho do Zmodem.
+func (t *Conn) WriteBinary(p []byte) (int, error) {
+	if _, err := t.writeRaw(EncodeBinary(p)); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+// SetBinary liga ou desliga o modo binário (RFC 856) e espera até 2 s a confirmação do servidor.
+// Sem confirmação, segue assim mesmo: servidores simples já tratam os dados sem alteração.
+func (t *Conn) SetBinary(on bool) error {
+	if msg := t.f.SetBinary(on); len(msg) > 0 {
+		if _, err := t.writeRaw(msg); err != nil {
+			return err
+		}
+	}
+	if !on {
+		return nil
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if t.f.BinaryReady() {
+			return nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return nil
 }
 
 // Resize avisa o servidor da nova dimensão do terminal.

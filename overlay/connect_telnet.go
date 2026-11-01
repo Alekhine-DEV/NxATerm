@@ -19,9 +19,16 @@ func (a *TermService) startTelnet(s store.Session, cols, rows int) (*termSession
 	conn := telnet.NewConn(raw, termTypeOf(s), cols, rows)
 	return &termSession{
 		w:       conn,
+		wRaw:    binaryWriter{conn},
+		setRaw:  conn.SetBinary,
 		out:     conn,
 		resize:  conn.Resize,
 		closers: []func(){func() { conn.Close() }},
 		enter:   "\r",
 	}, nil
 }
+
+// binaryWriter envia bytes pelo Telnet sem converter CR (só duplica o 0xFF).
+type binaryWriter struct{ c *telnet.Conn }
+
+func (b binaryWriter) Write(p []byte) (int, error) { return b.c.WriteBinary(p) }

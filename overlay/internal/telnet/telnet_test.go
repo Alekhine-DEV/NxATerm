@@ -187,3 +187,50 @@ func TestConnSmallReadBuffer(t *testing.T) {
 		t.Fatalf("all=%q", all)
 	}
 }
+
+func TestBinaryMode(t *testing.T) {
+	f := NewFilter("xterm", 80, 24)
+	// sem pedir, o servidor não ganha modo binário
+	_, reply := f.Process([]byte{iac, will, optBinary, iac, do, optBinary})
+	if string(reply) != string([]byte{iac, dont, optBinary, iac, wont, optBinary}) {
+		t.Fatalf("recusa esperada: %v", reply)
+	}
+	if got, _ := f.Process([]byte("a\r\x00b")); string(got) != "a\rb" {
+		t.Fatalf("modo texto deve descartar o NUL: %q", got)
+	}
+
+	msg := f.SetBinary(true)
+	if string(msg) != string([]byte{iac, do, optBinary, iac, will, optBinary}) {
+		t.Fatalf("pedido: %v", msg)
+	}
+	if f.BinaryReady() {
+		t.Fatal("não deveria estar pronto antes da confirmação")
+	}
+	_, reply = f.Process([]byte{iac, will, optBinary, iac, do, optBinary})
+	if len(reply) != 0 {
+		t.Fatalf("confirmação não deve gerar nova resposta: %v", reply)
+	}
+	if !f.BinaryReady() || !f.binaryOut() {
+		t.Fatal("deveria estar pronto")
+	}
+	if got, _ := f.Process([]byte("a\r\x00b\xff\xff")); string(got) != "a\r\x00b\xff" {
+		t.Fatalf("modo binário deve manter o NUL e desfazer o IAC IAC: %q", got)
+	}
+	if got := EncodeBinary([]byte("x\r\xffy")); string(got) != "x\r\xff\xffy" {
+		t.Fatalf("EncodeBinary: %q", got)
+	}
+	if got := Encode([]byte("x\ry")); string(got) != "x\r\x00y" {
+		t.Fatalf("Encode: %q", got)
+	}
+
+	off := f.SetBinary(false)
+	if string(off) != string([]byte{iac, dont, optBinary, iac, wont, optBinary}) {
+		t.Fatalf("desligar: %v", off)
+	}
+	if f.BinaryReady() {
+		t.Fatal("deveria ter saído do modo binário")
+	}
+	if got, _ := f.Process([]byte("a\r\x00b")); string(got) != "a\rb" {
+		t.Fatalf("de volta ao modo texto: %q", got)
+	}
+}

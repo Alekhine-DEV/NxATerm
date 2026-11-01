@@ -23,7 +23,8 @@ const b64ToU8 = (b64) => {
  * Liga o Zmodem a um terminal. Devolve { consume(bytes), active, dispose() }.
  * `consume` recebe tudo que vem do servidor: o que não é Zmodem segue para o terminal.
  */
-export function createZmodem({ id, term, pane }) {
+export function createZmodem({ id, term, pane, write }) {
+  const toTerm = write || ((o) => term.write(o))
   let session = null
   let sendQ = Promise.resolve()
   let bar = null
@@ -47,7 +48,11 @@ export function createZmodem({ id, term, pane }) {
   }
   const hideBar = () => { bar?.remove(); bar = null }
 
-  const finish = () => { state.active = false; session = null; hideBar() }
+  const finish = () => {
+    const was = state.active
+    state.active = false; session = null; hideBar()
+    if (was) Api.SetRawMode(id, false).catch(() => {}) // Telnet: sai do modo binário
+  }
   const cancel = () => {
     try { session?.abort() } catch { /* já encerrada */ }
     finish()
@@ -55,7 +60,7 @@ export function createZmodem({ id, term, pane }) {
   }
 
   const sentry = new Zmodem.Sentry({
-    to_terminal: (o) => term.write(o instanceof Uint8Array ? o : Uint8Array.from(o)),
+    to_terminal: (o) => toTerm(o instanceof Uint8Array ? o : Uint8Array.from(o)),
     sender,
     on_retract: () => { if (!state.active) hideBar() },
     on_detect: (detection) => {
@@ -74,8 +79,9 @@ export function createZmodem({ id, term, pane }) {
   async function receive(detection) {
     const dir = await Api.ZPickDir()
     if (!dir) { detection.deny(); return }
-    session = detection.confirm()
     state.active = true
+    try { await Api.SetRawMode(id, true) } catch { /* sem modo binário */ }
+    session = detection.confirm()
     showBar('Zmodem: aguardando arquivos...')
     let count = 0
     session.on('offer', (offer) => {
@@ -111,8 +117,9 @@ export function createZmodem({ id, term, pane }) {
   async function send(detection) {
     const files = await Api.ZPickSend()
     if (!files || !files.length) { detection.deny(); return }
-    session = detection.confirm()
     state.active = true
+    try { await Api.SetRawMode(id, true) } catch { /* sem modo binário */ }
+    session = detection.confirm()
     showBar('Zmodem: enviando...')
     let remaining = files.length
     let bytesLeft = files.reduce((n, f) => n + f.size, 0)

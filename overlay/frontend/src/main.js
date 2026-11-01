@@ -925,13 +925,20 @@ async function startTab(s, secret) {
     try { fit.fit() } catch { /* ainda sem tamanho */ }
     tab.hl = attachHighlight(term)
     // listeners ANTES de conectar, para não perder o prompt inicial
-    if (settings.zmodem && !s.encoding && ['ssh', 'serial', 'wsl', 'shell'].includes(kind)) {
-      tab.zm = createZmodem({ id, term, pane })
+    // com codificação escolhida (GBK, Shift-JIS...) o backend manda bytes crus e a conversão é feita aqui
+    let toTerm = (bytes) => term.write(bytes)
+    if (s.encoding) {
+      let dec
+      try { dec = new TextDecoder(s.encoding) } catch { dec = new TextDecoder('utf-8') }
+      toTerm = (bytes) => term.write(dec.decode(bytes, { stream: true }))
+    }
+    if (settings.zmodem && ['ssh', 'serial', 'wsl', 'shell', 'telnet'].includes(kind)) {
+      tab.zm = createZmodem({ id, term, pane, write: toTerm })
     }
     tab.unsub.push(Events.On('term:data:' + id, (ev) => {
       const bytes = b64ToBytes(payload(ev))
       if (tab.zm) tab.zm.consume(bytes)
-      else term.write(bytes)
+      else toTerm(bytes)
     }))
   }
   tab.unsub.push(Events.On('term:closed:' + id, (ev) => markDead(id, payload(ev))))
