@@ -31,7 +31,8 @@ Os instaladores não são assinados digitalmente: o Windows pode avisar "editor 
 
 **Terminal**
 - Abas e painéis divididos, busca, links clicáveis, Unicode 11, aceleração WebGL e imagens inline (sixel)
-- Zmodem (`rz`/`sz`) pelo terminal
+- Zmodem (`rz`/`sz`) e Trzsz (`trz`/`tsz`) pelo terminal, com qualquer codificação e também no Telnet
+- Ligaduras de fonte (Cascadia Code, Fira Code, JetBrains Mono e similares, quando instaladas)
 - Temas do terminal e da interface, imagem de fundo, transparência, CSS próprio, realce de palavras e importação de temas do iTerm2 e do Windows Terminal
 
 **Arquivos**
@@ -42,10 +43,12 @@ Os instaladores não são assinados digitalmente: o Windows pode avisar "editor 
 - MultiExec e execução de comandos em lote em vários servidores
 - Túneis SSH, macros e comandos rápidos (fixar, ordenar, vincular a sessões, importar e exportar)
 - Cor, tags e descrição nas sessões, histórico e espaços de trabalho
-- Senha de abertura do app, bandeja do sistema e atalho global (Windows)
+- Senha de abertura do app: além de travar a interface, criptografa os dados guardados (AES-256-GCM); perder a senha significa perder esses dados
+- Bandeja do sistema e atalho global (Windows, Linux em X11 e macOS; no Wayland use um atalho do sistema que execute `nxaterm`)
 
 **Sincronização**
 - Sessões, macros e configurações via GitHub Gist, WebDAV ou servidor próprio, com criptografia opcional por senha
+- Exclusões também são propagadas entre computadores
 
 **Assistente de IA**
 - Chat com qualquer API compatível com OpenAI, com modo agente que pede aprovação a cada comando
@@ -58,6 +61,7 @@ Os instaladores não são assinados digitalmente: o Windows pode avisar "editor 
 
 - [xterm.js](https://github.com/xtermjs/xterm.js) (MIT)
 - [zmodem.js](https://github.com/FGasper/zmodem.js) (Apache-2.0)
+- [trzsz.js](https://github.com/trzsz/trzsz.js) (MIT)
 - [noVNC](https://github.com/novnc/noVNC) (MPL-2.0)
 - [Wails](https://github.com/wailsapp/wails) (MIT)
 - O projeto [electerm](https://github.com/electerm/electerm) (MIT) serviu de referência para a lista de funcionalidades. Todo o código do NxATerm foi escrito do zero.
