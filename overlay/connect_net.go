@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"nxaterm/internal/netx"
+	"nxaterm/internal/secfile"
 	"nxaterm/internal/store"
 
 	"golang.org/x/crypto/ssh"
@@ -108,7 +109,7 @@ func (c *linkedConn) Close() error {
 
 // globalProxy lê o proxy geral das configurações do app.
 func (a *TermService) globalProxy() string {
-	data, err := os.ReadFile(a.settingsPath)
+	data, err := secfile.Read(a.settingsPath)
 	if err != nil {
 		return ""
 	}

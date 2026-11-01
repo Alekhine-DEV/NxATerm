@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"nxaterm/internal/secfile"
 	"os"
 	"sort"
 	"strings"
@@ -33,7 +34,7 @@ func parentFolder(p string) string {
 func inFolder(f, path string) bool { return f == path || strings.HasPrefix(f, path+"/") }
 
 func (s *Store) loadFolders() error {
-	data, err := os.ReadFile(s.foldersPath)
+	data, err := secfile.Read(s.foldersPath)
 	if errors.Is(err, os.ErrNotExist) || (err == nil && len(strings.TrimSpace(string(data))) == 0) {
 		s.folders = []string{}
 		return nil
@@ -56,11 +57,14 @@ func (s *Store) loadFolders() error {
 }
 
 func (s *Store) flushFolders() error {
+	if s.locked {
+		return secfile.ErrLocked
+	}
 	data, err := json.MarshalIndent(s.folders, "", "  ")
 	if err != nil {
 		return err
 	}
-	return WriteFileAtomic(s.foldersPath, data)
+	return secfile.Write(s.foldersPath, data)
 }
 
 func (s *Store) addFolderLocked(p string) bool {

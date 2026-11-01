@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"nxaterm/internal/secfile"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -86,30 +87,69 @@ type Store struct {
 	sessions    []Session
 	foldersPath string   // pastas criadas pelo usuário (inclusive vazias)
 	folders     []string // sem duplicatas, já normalizadas
+	locked      bool     // dados criptografados e ainda sem a senha de abertura
 }
 
-// Open carrega o arquivo (criando-o vazio se não existir).
+// Open carrega o arquivo (criando-o vazio se não existir). Se os dados estiverem criptografados e
+// a senha de abertura ainda não foi digitada, devolve o Store vazio e bloqueado: Reload carrega
+// depois do desbloqueio, e enquanto isso nada é gravado.
 func Open(path string) (*Store, error) {
 	s := &Store{path: path, foldersPath: filepath.Join(filepath.Dir(path), "folders.json")}
-	if err := s.loadFolders(); err != nil {
+	if err := s.Reload(); err != nil {
 		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		s.sessions = []Session{}
-		return s, nil
-	case err != nil:
-		return nil, err
-	}
-	if len(strings.TrimSpace(string(data))) == 0 {
-		s.sessions = []Session{}
-		return s, nil
-	}
-	if err := json.Unmarshal(data, &s.sessions); err != nil {
-		return nil, fmt.Errorf("arquivo de sessões corrompido (%s): %w", path, err)
 	}
 	return s, nil
+}
+
+// Locked diz se os dados ainda estão protegidos (aguardando a senha de abertura).
+func (s *Store) Locked() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.locked
+}
+
+// Reload lê de novo os arquivos (usado depois de desbloquear).
+func (s *Store) Reload() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.locked = false
+	s.sessions = []Session{}
+	s.folders = []string{}
+	if err := s.loadFolders(); err != nil {
+		if errors.Is(err, secfile.ErrLocked) {
+			s.locked = true
+			return nil
+		}
+		return err
+	}
+	data, err := secfile.Read(s.path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	case errors.Is(err, secfile.ErrLocked):
+		s.locked = true
+		s.folders = []string{}
+		return nil
+	case err != nil:
+		return err
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(data, &s.sessions); err != nil {
+		return fmt.Errorf("arquivo de sessões corrompido (%s): %w", s.path, err)
+	}
+	return nil
+}
+
+// Rewrite grava de novo todos os arquivos, no formato atual (criptografado ou não).
+func (s *Store) Rewrite() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.flush(); err != nil {
+		return err
+	}
+	return s.flushFolders()
 }
 
 // List devolve uma cópia ordenada por pasta e nome.
@@ -523,34 +563,16 @@ func newID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// flush grava de forma atômica (arquivo temporário + rename).
+// flush grava de forma atômica (arquivo temporário + rename), criptografando se houver senha de abertura.
 func (s *Store) flush() error {
+	if s.locked {
+		return secfile.ErrLocked
+	}
 	data, err := json.MarshalIndent(s.sessions, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".sessions-*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return err
-	}
-	if err := os.Rename(tmpName, s.path); err != nil {
-		os.Remove(tmpName)
-		return err
-	}
-	return nil
+	return secfile.Write(s.path, data)
 }
 
 // MergeSync junta sessões vindas de outro computador, mantendo os IDs (os servidores de salto

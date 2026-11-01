@@ -6,12 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"nxaterm/internal/mcpsrv"
+	"nxaterm/internal/secfile"
 )
 
 // McpState descreve o servidor MCP local.
@@ -46,11 +46,15 @@ func (a *TermService) McpToken() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if data, err := os.ReadFile(p); err == nil && len(strings.TrimSpace(string(data))) >= 32 {
+	data, err := secfile.Read(p)
+	if errors.Is(err, secfile.ErrLocked) {
+		return "", err // nunca troca o token por não conseguir ler o arquivo protegido
+	}
+	if err == nil && len(strings.TrimSpace(string(data))) >= 32 {
 		return strings.TrimSpace(string(data)), nil
 	}
 	tok := mcpsrv.NewToken()
-	return tok, os.WriteFile(p, []byte(tok), 0o600)
+	return tok, secfile.Write(p, []byte(tok))
 }
 
 // McpResetToken gera um token novo (os clientes antigos deixam de funcionar) e reinicia o servidor se estiver ativo.
@@ -60,7 +64,7 @@ func (a *TermService) McpResetToken() (string, error) {
 		return "", err
 	}
 	tok := mcpsrv.NewToken()
-	if err := os.WriteFile(p, []byte(tok), 0o600); err != nil {
+	if err := secfile.Write(p, []byte(tok)); err != nil {
 		return "", err
 	}
 	if on, addr := a.mcp.Running(); on {

@@ -1424,11 +1424,13 @@ function initEvents() {
 }
 
 async function init() {
+  // com senha de abertura os dados ficam criptografados: só dá para ler as configurações depois dela
+  setLang(settings.lang)
+  await lockGate()
   await loadSettings()
   setLang(settings.lang)
   setStartupTransparent(settings.windowTransparent)
   applyAppearance()
-  await lockGate()
   if (settings.hasBg) Api.GetBackground().then((d) => setBackgroundData(d)).catch(() => {})
   $('workspace').style.setProperty('--sidew', settings.sidebarWidth + 'px')
   $('statusbar').classList.toggle('hidden', !settings.showStatusBar)

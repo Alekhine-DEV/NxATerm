@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"nxaterm/internal/aichat"
+	"nxaterm/internal/secfile"
 )
 
 // agentTools são as ferramentas que o modo agente oferece ao modelo.
@@ -56,7 +57,7 @@ func (a *TermService) AiSaveKey(key string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, []byte(strings.TrimSpace(key)), 0o600)
+	return secfile.Write(p, []byte(strings.TrimSpace(key)))
 }
 
 // AiLoadKey devolve a chave guardada (vazio se nada).
@@ -65,7 +66,7 @@ func (a *TermService) AiLoadKey() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	data, err := os.ReadFile(p)
+	data, err := secfile.Read(p)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}

@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"nxaterm/internal/secfile"
 	"nxaterm/internal/store"
 
 	"golang.org/x/crypto/ssh"
@@ -29,11 +31,129 @@ func (a *TermService) ReorderMacros(ids []string) error { return a.macros.Reorde
 // HasLock diz se existe senha de abertura.
 func (a *TermService) HasLock() bool { return a.lock.Enabled() }
 
-// CheckLock confere a senha de abertura.
-func (a *TermService) CheckLock(pw string) bool { return a.lock.Check(pw) }
+// CheckLock confere a senha de abertura e, se estiver certa, abre os dados criptografados.
+func (a *TermService) CheckLock(pw string) (bool, error) {
+	if !a.lock.Check(pw) {
+		return false, nil
+	}
+	if !a.lock.Enabled() {
+		return true, nil
+	}
+	if err := a.unlockData(pw); err != nil {
+		return false, err
+	}
+	return true, nil
+}
 
-// SetLock define, troca ou remove (newPw vazia) a senha de abertura.
-func (a *TermService) SetLock(current, newPw string) error { return a.lock.Set(current, newPw) }
+// SetLock define, troca ou remove (newPw vazia) a senha de abertura. Os arquivos de dados são
+// regravados com a chave nova (ou em texto, se a senha for removida).
+func (a *TermService) SetLock(current, newPw string) error {
+	a.dataMu.Lock()
+	defer a.dataMu.Unlock()
+	if a.store.Locked() || a.macros.Locked() {
+		return secfile.ErrLocked
+	}
+	// o conteúdo atual dos arquivos, ainda com a chave antiga
+	files, err := a.readSecretFiles()
+	if err != nil {
+		return err
+	}
+	if err := a.lock.Set(current, newPw); err != nil {
+		return err
+	}
+	if newPw == "" {
+		secfile.ClearKey()
+	} else {
+		key, err := a.lock.DeriveKey(newPw)
+		if err != nil {
+			return err
+		}
+		secfile.SetKey(key)
+	}
+	return a.writeAllData(files)
+}
+
+// unlockData carrega a chave dos dados a partir da senha (já conferida) e lê os arquivos.
+func (a *TermService) unlockData(pw string) error {
+	a.dataMu.Lock()
+	defer a.dataMu.Unlock()
+	if secfile.HasKey() && !a.store.Locked() && !a.macros.Locked() {
+		return nil
+	}
+	key, err := a.lock.DeriveKey(pw)
+	if err != nil {
+		return err
+	}
+	secfile.SetKey(key)
+	fail := func(err error) error {
+		secfile.ClearKey()
+		return err
+	}
+	if err := a.store.Reload(); err != nil {
+		return fail(err)
+	}
+	if err := a.macros.Reload(); err != nil {
+		return fail(err)
+	}
+	files, err := a.readSecretFiles()
+	if err != nil {
+		return fail(err)
+	}
+	// arquivos de uma versão sem criptografia passam a ficar protegidos
+	return a.writeAllData(files)
+}
+
+// secretFileNames são os arquivos, além de sessões e macros, que acompanham a criptografia.
+var secretFileNames = []string{"settings.json", "ai-key.txt", "mcp-token.txt", "sync-secrets.json"}
+
+func (a *TermService) readSecretFiles() (map[string][]byte, error) {
+	dir := filepath.Dir(a.settingsPath)
+	out := map[string][]byte{}
+	for _, n := range secretFileNames {
+		data, err := secfile.Read(filepath.Join(dir, n))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", n, err)
+		}
+		out[n] = data
+	}
+	return out, nil
+}
+
+// writeAllData regrava sessões, macros e os demais arquivos no formato atual (com ou sem chave).
+func (a *TermService) writeAllData(files map[string][]byte) error {
+	var errs []error
+	if err := a.store.Rewrite(); err != nil {
+		errs = append(errs, err)
+	}
+	if err := a.macros.Rewrite(); err != nil {
+		errs = append(errs, err)
+	}
+	dir := filepath.Dir(a.settingsPath)
+	for n, data := range files {
+		if err := secfile.Write(filepath.Join(dir, n), data); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", n, err))
+		}
+	}
+	if js, ok := files["settings.json"]; ok {
+		a.writeStartup(js)
+	}
+	return errors.Join(errs...)
+}
+
+// writeStartup guarda em texto só o que precisa valer antes de a senha ser digitada
+// (bandeja, atalho global e janela única). Não tem nada sensível.
+func (a *TermService) writeStartup(settingsJSON []byte) {
+	var st startupSettings
+	if json.Unmarshal(settingsJSON, &st) != nil {
+		return
+	}
+	if b, err := json.Marshal(st); err == nil {
+		store.WriteFileAtomic(filepath.Join(filepath.Dir(a.settingsPath), "startup.json"), b)
+	}
+}
 
 // DeleteMacro apaga uma macro.
 func (a *TermService) DeleteMacro(id string) error { return a.macros.Delete(id) }
@@ -42,7 +162,7 @@ func (a *TermService) DeleteMacro(id string) error { return a.macros.Delete(id) 
 
 // LoadSettings devolve o JSON das configurações da interface ("" se ainda não existe).
 func (a *TermService) LoadSettings() (string, error) {
-	data, err := os.ReadFile(a.settingsPath)
+	data, err := secfile.Read(a.settingsPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
@@ -57,7 +177,11 @@ func (a *TermService) SaveSettings(js string) error {
 	if !json.Valid([]byte(js)) {
 		return errors.New("configurações inválidas")
 	}
-	return store.WriteFileAtomic(a.settingsPath, []byte(js))
+	if err := secfile.Write(a.settingsPath, []byte(js)); err != nil {
+		return err
+	}
+	a.writeStartup([]byte(js))
+	return nil
 }
 
 // ---------------------------------------------------------------- gerador de chaves

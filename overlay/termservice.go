@@ -40,8 +40,9 @@ type TermService struct {
 	promptMu sync.Mutex
 	prompts  map[string]chan promptAnswer
 
-	xf   *xferState
-	lock *applock.Lock
+	xf     *xferState
+	lock   *applock.Lock
+	dataMu sync.Mutex // troca de senha / desbloqueio dos dados
 
 	syncMu sync.Mutex
 

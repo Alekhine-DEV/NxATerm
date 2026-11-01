@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"nxaterm/internal/secfile"
 	"os"
 	"path/filepath"
 	"sort"
@@ -29,25 +30,56 @@ type MacroStore struct {
 	mu     sync.Mutex
 	path   string
 	macros []Macro
+	locked bool // dados criptografados e ainda sem a senha de abertura
 }
 
-// OpenMacros carrega o arquivo (vazio se não existir).
+// OpenMacros carrega o arquivo (vazio se não existir). Se estiver criptografado e a senha de
+// abertura ainda não foi digitada, devolve o armazém vazio e bloqueado; Reload carrega depois.
 func OpenMacros(path string) (*MacroStore, error) {
-	m := &MacroStore{path: path, macros: []Macro{}}
-	data, err := os.ReadFile(path)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		return m, nil
-	case err != nil:
+	m := &MacroStore{path: path}
+	if err := m.Reload(); err != nil {
 		return nil, err
 	}
+	return m, nil
+}
+
+// Locked diz se os dados ainda estão protegidos.
+func (m *MacroStore) Locked() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.locked
+}
+
+// Reload lê de novo o arquivo (usado depois de desbloquear).
+func (m *MacroStore) Reload() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.locked = false
+	m.macros = []Macro{}
+	data, err := secfile.Read(m.path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	case errors.Is(err, secfile.ErrLocked):
+		m.locked = true
+		return nil
+	case err != nil:
+		return err
+	}
 	if len(strings.TrimSpace(string(data))) == 0 {
-		return m, nil
+		return nil
 	}
 	if err := json.Unmarshal(data, &m.macros); err != nil {
-		return nil, fmt.Errorf("arquivo de macros corrompido (%s): %w", path, err)
+		return fmt.Errorf("arquivo de macros corrompido (%s): %w", m.path, err)
 	}
-	return m, nil
+	return nil
+}
+
+// Rewrite grava de novo o arquivo no formato atual (criptografado ou não).
+func (m *MacroStore) Rewrite() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.flush()
 }
 
 // List devolve uma cópia ordenada por nome.
@@ -138,11 +170,14 @@ func (m *MacroStore) Delete(id string) error {
 }
 
 func (m *MacroStore) flush() error {
+	if m.locked {
+		return secfile.ErrLocked
+	}
 	data, err := json.MarshalIndent(m.macros, "", "  ")
 	if err != nil {
 		return err
 	}
-	return WriteFileAtomic(m.path, data)
+	return secfile.Write(m.path, data)
 }
 
 // WriteFileAtomic grava em arquivo temporário e renomeia, para nunca deixar

@@ -1,5 +1,5 @@
 // Package applock guarda a senha de abertura do app (bloqueio da tela). Só o hash fica no disco.
-// Atenção: isto bloqueia o acesso à interface; os arquivos de sessões não são criptografados.
+// A mesma senha também gera a chave que criptografa os arquivos de dados (sal separado do hash).
 package applock
 
 import (
@@ -24,6 +24,8 @@ type record struct {
 	Salt string `json:"salt"`
 	Hash string `json:"hash"`
 	Iter int    `json:"iter"`
+	// KSalt é o sal da chave de criptografia dos dados (vazio em arquivos de versões antigas).
+	KSalt string `json:"ksalt,omitempty"`
 }
 
 // Lock é o bloqueio salvo em um arquivo.
@@ -88,6 +90,44 @@ func (l *Lock) Check(pw string) bool {
 	return ok
 }
 
+// DeriveKey devolve a chave de 32 bytes que criptografa os dados. A senha precisa estar certa.
+// Em arquivos de versões antigas (sem sal da chave) o sal é criado e salvo agora.
+func (l *Lock) DeriveKey(pw string) ([]byte, error) {
+	if !l.Check(pw) {
+		return nil, errors.New("senha incorreta")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.rec == nil {
+		return nil, errors.New("sem senha de abertura")
+	}
+	if l.rec.KSalt == "" {
+		ks := make([]byte, 16)
+		if _, err := rand.Read(ks); err != nil {
+			return nil, err
+		}
+		r := *l.rec
+		r.KSalt = hex.EncodeToString(ks)
+		if err := l.save(&r); err != nil {
+			return nil, err
+		}
+		l.rec = &r
+	}
+	ks, err := hex.DecodeString(l.rec.KSalt)
+	if err != nil {
+		return nil, err
+	}
+	return kdf.PBKDF2([]byte(pw), ks, l.rec.Iter, 32), nil
+}
+
+func (l *Lock) save(r *record) error {
+	data, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(l.path, data, 0o600)
+}
+
 // Set troca a senha. Com senha já definida, current precisa estar certa. newPw vazia remove a senha.
 func (l *Lock) Set(current, newPw string) error {
 	if l.Enabled() && !l.Check(current) {
@@ -109,9 +149,12 @@ func (l *Lock) Set(current, newPw string) error {
 	if _, err := rand.Read(salt); err != nil {
 		return err
 	}
-	r := &record{Salt: hex.EncodeToString(salt), Iter: iterations, Hash: hex.EncodeToString(kdf.PBKDF2([]byte(newPw), salt, iterations, 32))}
-	data, _ := json.Marshal(r)
-	if err := os.WriteFile(l.path, data, 0o600); err != nil {
+	ks := make([]byte, 16)
+	if _, err := rand.Read(ks); err != nil {
+		return err
+	}
+	r := &record{Salt: hex.EncodeToString(salt), Iter: iterations, Hash: hex.EncodeToString(kdf.PBKDF2([]byte(newPw), salt, iterations, 32)), KSalt: hex.EncodeToString(ks)}
+	if err := l.save(r); err != nil {
 		return err
 	}
 	l.rec = r

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"nxaterm/internal/launch"
+	"nxaterm/internal/secfile"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -28,7 +29,11 @@ type startupSettings struct {
 func readStartupSettings() startupSettings {
 	var v startupSettings
 	if dir, err := dataDir(); err == nil {
-		if data, err := os.ReadFile(filepath.Join(dir, "settings.json")); err == nil {
+		// startup.json (em texto) existe quando as configurações são criptografadas
+		if data, err := os.ReadFile(filepath.Join(dir, "startup.json")); err == nil && json.Unmarshal(data, &v) == nil {
+			return v
+		}
+		if data, err := secfile.Read(filepath.Join(dir, "settings.json")); err == nil {
 			json.Unmarshal(data, &v)
 		}
 	}

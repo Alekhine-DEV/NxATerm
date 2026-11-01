@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"nxaterm/internal/secfile"
 	"nxaterm/internal/store"
 	"nxaterm/internal/syncer"
 )
@@ -132,7 +133,7 @@ func (a *TermService) SyncSaveSecrets(cfg syncer.Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, data, 0o600)
+	return secfile.Write(p, data)
 }
 
 // SyncLoadSecrets devolve o que foi guardado (vazio se nada).
@@ -142,7 +143,7 @@ func (a *TermService) SyncLoadSecrets() (syncer.Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	data, err := os.ReadFile(p)
+	data, err := secfile.Read(p)
 	if errors.Is(err, os.ErrNotExist) {
 		return cfg, nil
 	}
