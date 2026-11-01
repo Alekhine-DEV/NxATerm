@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"nxaterm/internal/applock"
+	"nxaterm/internal/mcpsrv"
 	"nxaterm/internal/netx"
 	"nxaterm/internal/store"
 
@@ -43,6 +44,10 @@ type TermService struct {
 	lock *applock.Lock
 
 	syncMu sync.Mutex
+
+	mcp     mcpsrv.Server
+	mcpMu   sync.Mutex
+	mcpWait map[string]chan mcpAnswer
 
 	quitting atomic.Bool // o usuário pediu para sair de verdade (não é só fechar a janela)
 	toggle   func()      // mostra ou esconde a janela principal
@@ -87,6 +92,7 @@ func (a *TermService) ServiceStartup(ctx context.Context, options application.Se
 
 // ServiceShutdown é chamado pelo Wails ao encerrar: fecha todas as conexões.
 func (a *TermService) ServiceShutdown() error {
+	a.mcp.Stop()
 	a.closeAll()
 	return nil
 }

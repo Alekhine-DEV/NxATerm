@@ -4,6 +4,7 @@
 import { DICT_A } from './i18n-dict-a.js'
 import { DICT_B } from './i18n-dict-b.js'
 import { DICT_C } from './i18n-dict-c.js'
+import { DICT_D } from './i18n-dict-d.js'
 
 export const LANGS = { pt: 'Português', en: 'English', es: 'Español' }
 const COL = { en: 1, es: 2 }
@@ -11,7 +12,7 @@ const COL = { en: 1, es: 2 }
 const exact = { en: new Map(), es: new Map() }
 const templates = { en: [], es: [] } // { re, out, n }
 
-for (const line of (DICT_A + '\n' + DICT_B + '\n' + DICT_C).split('\n')) {
+for (const line of (DICT_A + '\n' + DICT_B + '\n' + DICT_C + '\n' + DICT_D).split('\n')) {
   const parts = line.split('¦').map((x) => x.trim())
   if (parts.length < 3 || !parts[0]) continue
   for (const lang of ['en', 'es']) {

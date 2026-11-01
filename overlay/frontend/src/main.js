@@ -26,6 +26,7 @@ import { createZmodem } from './zmodemfx.js'
 import { batchDialog } from './batch.js'
 import { syncDialog, syncOnOpen } from './sync.js'
 import { setLang } from './i18n.js'
+import { initAi, renderAiPanel } from './ai.js'
 import { checkUpdates } from './updates.js'
 import { initFiles, renderSide, buildFileTab } from './files.js'
 import { TYPE_INFO, typeOf, hasFiles, hasSSH, hasTerminal, sessionSummary, isWindows } from './sessiontypes.js'
@@ -125,6 +126,7 @@ const MENUS = {
     { label: 'Executar em lote...', icon: 'playall', onclick: () => batchDialog(sessions) },
     { label: 'Gerador de chaves SSH...', icon: 'key', onclick: keygenDialog },
     { sep: true },
+    { label: 'Assistente de IA', icon: 'bot', onclick: () => showSide('ai') },
     { label: 'Sincronização...', icon: 'refresh', onclick: openSync },
   ],
   Macros: () => [
@@ -236,6 +238,7 @@ const SIDE_VIEWS = [
   { id: 'sessions', title: 'Sessões', icon: 'star' },
   { id: 'sftp', title: 'Navegador SFTP', icon: 'folder' },
   { id: 'macros', title: 'Macros', icon: 'send' },
+  { id: 'ai', title: 'Assistente', icon: 'bot' },
 ]
 
 function buildSidetabs() {
@@ -257,6 +260,7 @@ function showSide(view) {
     syncFollow()
   }
   if (view === 'macros') renderMacros()
+  if (view === 'ai') renderAiPanel()
 }
 
 function toggleSidebar() {
@@ -1412,6 +1416,7 @@ async function init() {
   await initFiles({ getTab: (id) => tabs.get(id), activeTab, allTabs, reconnectTab, copyText })
   await Promise.allSettled([refreshSessions(), refreshMacros()])
   await initConnect(openSession)
+  initAi({ activeTab, allTabs, openSession, sessions: () => sessions })
   setTimeout(() => syncOnOpen(syncHooks()), 2500)
   if (settings.checkUpdates) setTimeout(() => checkUpdates({ silent: true, openURL }), 6000)
 }
