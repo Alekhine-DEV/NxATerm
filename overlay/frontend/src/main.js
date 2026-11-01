@@ -24,6 +24,7 @@ import { initConnect } from './connect.js'
 import { attachHighlight } from './highlight.js'
 import { createZmodem } from './zmodemfx.js'
 import { batchDialog } from './batch.js'
+import { syncDialog, syncOnOpen } from './sync.js'
 import { checkUpdates } from './updates.js'
 import { initFiles, renderSide, buildFileTab } from './files.js'
 import { TYPE_INFO, typeOf, hasFiles, hasSSH, hasTerminal, sessionSummary, isWindows } from './sessiontypes.js'
@@ -122,6 +123,8 @@ const MENUS = {
     { label: 'Túneis SSH...', kbd: keyOf('tunnels'), icon: 'tunnel', onclick: openTunnels },
     { label: 'Executar em lote...', icon: 'playall', onclick: () => batchDialog(sessions) },
     { label: 'Gerador de chaves SSH...', icon: 'key', onclick: keygenDialog },
+    { sep: true },
+    { label: 'Sincronização...', icon: 'refresh', onclick: openSync },
   ],
   Macros: () => [
     ...(visibleMacros('active').length
@@ -197,14 +200,20 @@ function buildToolbar() {
   add('Macros', 'send', '#ff7ab6', () => showSide('macros'))
 }
 
-function openSettings() {
-  settingsDialog(() => {
-    for (const t of allTabs()) applyTermSettings(t)
-    renderStatus()
-    syncFollow()
-    pollStats()
-  })
+function applySettingsEverywhere() {
+  for (const t of allTabs()) applyTermSettings(t)
+  renderStatus()
+  syncFollow()
+  pollStats()
 }
+
+function openSettings() { settingsDialog(applySettingsEverywhere) }
+
+const syncHooks = () => ({
+  onData: () => Promise.all([refreshSessions(), refreshMacros()]),
+  onSettings: applySettingsEverywhere,
+})
+function openSync() { syncDialog(syncHooks()) }
 
 function openTunnels() {
   tunnelDialog(() => {
@@ -1401,6 +1410,7 @@ async function init() {
   await initFiles({ getTab: (id) => tabs.get(id), activeTab, allTabs, reconnectTab, copyText })
   await Promise.allSettled([refreshSessions(), refreshMacros()])
   await initConnect(openSession)
+  setTimeout(() => syncOnOpen(syncHooks()), 2500)
   if (settings.checkUpdates) setTimeout(() => checkUpdates({ silent: true, openURL }), 6000)
 }
 

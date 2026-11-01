@@ -57,6 +57,7 @@ export const DEFAULTS = {
   workspaces: {}, // espaços de trabalho: { nome: { items: [sessão], layout } }
   zmodem: true, // transferências rz/sz pelo terminal
   inlineImages: true, // mostra imagens no terminal (sixel e protocolo do iTerm2)
+  sync: { provider: 'gist', gistId: '', url: '', user: '', encrypt: false, remember: false, onOpen: false, withSettings: true }, // destino da sincronização (sem segredos)
   highlight: { enabled: false, rules: [] }, // realce de palavras: rules = [{ pattern, color, regex }]
 }
 
@@ -67,7 +68,11 @@ export async function loadSettings() {
     const raw = await Api.LoadSettings()
     if (raw) Object.assign(settings, JSON.parse(raw))
   } catch { /* usa os padrões */ }
-  // valida o que veio do arquivo
+  normalizeSettings()
+}
+
+/** Confere os valores (do arquivo ou de uma cópia sincronizada) e troca o que for inválido pelo padrão. */
+export function normalizeSettings() {
   if (!FONTS[settings.font]) settings.font = DEFAULTS.font
   for (const k of ['uiThemes', 'customThemes']) {
     if (!settings[k] || typeof settings[k] !== 'object' || Array.isArray(settings[k])) settings[k] = {}
@@ -100,6 +105,17 @@ export async function loadSettings() {
       ? hl.rules.filter((r) => r && typeof r.pattern === 'string' && r.pattern).slice(0, 50)
           .map((r) => ({ pattern: r.pattern.slice(0, 200), color: normHex(r.color), regex: !!r.regex }))
       : [],
+  }
+  const sy = settings.sync && typeof settings.sync === 'object' && !Array.isArray(settings.sync) ? settings.sync : {}
+  settings.sync = {
+    provider: ['gist', 'webdav', 'custom'].includes(sy.provider) ? sy.provider : 'gist',
+    gistId: typeof sy.gistId === 'string' ? sy.gistId.trim().slice(0, 64) : '',
+    url: typeof sy.url === 'string' ? sy.url.trim().slice(0, 500) : '',
+    user: typeof sy.user === 'string' ? sy.user.slice(0, 200) : '',
+    encrypt: !!sy.encrypt,
+    remember: !!sy.remember,
+    onOpen: !!sy.onOpen,
+    withSettings: sy.withSettings !== false,
   }
   settings.fontSize = clampNum(settings.fontSize, 8, 32, DEFAULTS.fontSize)
   settings.scrollback = clampNum(settings.scrollback, 500, 200000, DEFAULTS.scrollback)

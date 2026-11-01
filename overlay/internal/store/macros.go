@@ -171,3 +171,61 @@ func WriteFileAtomic(path string, data []byte) error {
 	}
 	return nil
 }
+
+// MergeSync junta macros vindas de outro computador (mesmo ID ou mesmo nome e comando = já existe).
+func (m *MacroStore) MergeSync(list []Macro) (added int, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ids := map[string]bool{}
+	same := map[string]bool{}
+	for _, e := range m.macros {
+		ids[e.ID] = true
+		same[e.Name+"\x00"+e.Command] = true
+	}
+	for _, in := range list {
+		in.Name = strings.TrimSpace(in.Name)
+		if in.Name == "" || strings.TrimSpace(in.Command) == "" || (in.ID != "" && ids[in.ID]) || same[in.Name+"\x00"+in.Command] {
+			continue
+		}
+		in.Tags = CleanTags(in.Tags)
+		if in.ID == "" || ids[in.ID] {
+			if in.ID, err = newID(); err != nil {
+				return added, err
+			}
+		}
+		m.macros = append(m.macros, in)
+		ids[in.ID] = true
+		same[in.Name+"\x00"+in.Command] = true
+		added++
+	}
+	if added == 0 {
+		return 0, nil
+	}
+	return added, m.flush()
+}
+
+// ReplaceAll troca todas as macros pelas que vieram de outro computador.
+func (m *MacroStore) ReplaceAll(list []Macro) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []Macro{}
+	ids := map[string]bool{}
+	for _, in := range list {
+		in.Name = strings.TrimSpace(in.Name)
+		if in.Name == "" || strings.TrimSpace(in.Command) == "" {
+			continue
+		}
+		in.Tags = CleanTags(in.Tags)
+		if in.ID == "" || ids[in.ID] {
+			id, err := newID()
+			if err != nil {
+				return 0, err
+			}
+			in.ID = id
+		}
+		ids[in.ID] = true
+		out = append(out, in)
+	}
+	m.macros = out
+	return len(out), m.flush()
+}

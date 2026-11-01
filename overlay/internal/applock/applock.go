@@ -3,17 +3,16 @@
 package applock
 
 import (
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
 	"sync"
 	"time"
+
+	"nxaterm/internal/kdf"
 )
 
 const (
@@ -78,7 +77,7 @@ func (l *Lock) Check(pw string) bool {
 	if err != nil {
 		return false
 	}
-	ok := subtle.ConstantTimeCompare(pbkdf2([]byte(pw), salt, rec.Iter, len(want)), want) == 1
+	ok := subtle.ConstantTimeCompare(kdf.PBKDF2([]byte(pw), salt, rec.Iter, len(want)), want) == 1
 	l.mu.Lock()
 	if ok {
 		l.failures = 0
@@ -110,7 +109,7 @@ func (l *Lock) Set(current, newPw string) error {
 	if _, err := rand.Read(salt); err != nil {
 		return err
 	}
-	r := &record{Salt: hex.EncodeToString(salt), Iter: iterations, Hash: hex.EncodeToString(pbkdf2([]byte(newPw), salt, iterations, 32))}
+	r := &record{Salt: hex.EncodeToString(salt), Iter: iterations, Hash: hex.EncodeToString(kdf.PBKDF2([]byte(newPw), salt, iterations, 32))}
 	data, _ := json.Marshal(r)
 	if err := os.WriteFile(l.path, data, 0o600); err != nil {
 		return err
@@ -118,32 +117,4 @@ func (l *Lock) Set(current, newPw string) error {
 	l.rec = r
 	l.failures = 0
 	return nil
-}
-
-// pbkdf2 (HMAC-SHA256), RFC 8018.
-func pbkdf2(password, salt []byte, iter, keyLen int) []byte {
-	prf := hmac.New(sha256.New, password)
-	hLen := prf.Size()
-	blocks := (keyLen + hLen - 1) / hLen
-	out := make([]byte, 0, blocks*hLen)
-	u := make([]byte, hLen)
-	var idx [4]byte
-	for b := 1; b <= blocks; b++ {
-		prf.Reset()
-		prf.Write(salt)
-		binary.BigEndian.PutUint32(idx[:], uint32(b))
-		prf.Write(idx[:])
-		t := prf.Sum(nil)
-		copy(u, t)
-		for i := 1; i < iter; i++ {
-			prf.Reset()
-			prf.Write(u)
-			u = prf.Sum(u[:0])
-			for j := range t {
-				t[j] ^= u[j]
-			}
-		}
-		out = append(out, t...)
-	}
-	return out[:keyLen]
 }

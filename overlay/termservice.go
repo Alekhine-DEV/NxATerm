@@ -42,6 +42,8 @@ type TermService struct {
 	xf   *xferState
 	lock *applock.Lock
 
+	syncMu sync.Mutex
+
 	quitting atomic.Bool // o usuário pediu para sair de verdade (não é só fechar a janela)
 	toggle   func()      // mostra ou esconde a janela principal
 }

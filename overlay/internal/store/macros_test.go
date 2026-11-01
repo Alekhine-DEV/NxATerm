@@ -81,3 +81,15 @@ func TestMacroOrderAndPin(t *testing.T) {
 		t.Fatalf("fixar: %s %v", names(), x.Tags)
 	}
 }
+
+func TestMacroMergeReplace(t *testing.T) {
+	m, _ := OpenMacros(filepath.Join(t.TempDir(), "m.json"))
+	x, _ := m.Save(Macro{Name: "a", Command: "ls"})
+	n, err := m.MergeSync([]Macro{{ID: x.ID, Name: "a", Command: "pwd"}, {ID: "n1", Name: "b", Command: "df"}, {Name: "a", Command: "ls"}, {Name: "", Command: "x"}})
+	if err != nil || n != 1 || len(m.List()) != 2 {
+		t.Fatalf("merge: %d %v %v", n, err, m.List())
+	}
+	if k, err := m.ReplaceAll([]Macro{{Name: "só", Command: "id"}}); err != nil || k != 1 || len(m.List()) != 1 {
+		t.Fatalf("replace: %d %v", k, err)
+	}
+}

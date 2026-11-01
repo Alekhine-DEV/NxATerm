@@ -509,3 +509,78 @@ func (s *Store) flush() error {
 	}
 	return nil
 }
+
+// MergeSync junta sessões vindas de outro computador, mantendo os IDs (os servidores de salto
+// apontam para IDs). Sessões que já existem (mesmo ID ou mesmo destino) ficam como estão aqui.
+func (s *Store) MergeSync(list []Session, folders []string) (added int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := map[string]bool{}
+	keys := map[string]bool{}
+	for _, e := range s.sessions {
+		ids[e.ID] = true
+		keys[key(e)] = true
+	}
+	for _, in := range list {
+		n, nerr := Normalize(in)
+		if nerr != nil || (n.ID != "" && ids[n.ID]) || keys[key(n)] {
+			continue
+		}
+		if n.ID == "" || ids[n.ID] {
+			if n.ID, err = newID(); err != nil {
+				return added, err
+			}
+		}
+		s.sessions = append(s.sessions, n)
+		ids[n.ID], keys[key(n)] = true, true
+		added++
+	}
+	foldersChanged := false
+	for _, f := range folders {
+		if s.addFolderLocked(f) {
+			foldersChanged = true
+		}
+	}
+	if added > 0 {
+		if err = s.flush(); err != nil {
+			return added, err
+		}
+	}
+	if foldersChanged {
+		err = s.flushFolders()
+	}
+	return added, err
+}
+
+// ReplaceAll troca tudo pelo que veio de outro computador (IDs preservados). Sessões inválidas são ignoradas.
+func (s *Store) ReplaceAll(list []Session, folders []string) (kept int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Session
+	ids := map[string]bool{}
+	for _, in := range list {
+		n, nerr := Normalize(in)
+		if nerr != nil {
+			continue
+		}
+		if n.ID == "" || ids[n.ID] {
+			if n.ID, err = newID(); err != nil {
+				return 0, err
+			}
+		}
+		ids[n.ID] = true
+		out = append(out, n)
+	}
+	if out == nil {
+		out = []Session{}
+	}
+	s.sessions = out
+	s.folders = nil
+	for _, f := range folders {
+		s.addFolderLocked(f)
+	}
+	if err = s.flush(); err != nil {
+		return len(out), err
+	}
+	return len(out), s.flushFolders()
+}

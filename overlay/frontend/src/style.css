@@ -603,3 +603,9 @@ input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid v
 .dot.run { background: var(--accent); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
 .upd-notes { max-height: 240px; overflow: auto; background: var(--g-0e0e0e); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; font-size: 12px; white-space: pre-wrap; user-select: text; }
+
+/* sincronização */
+.modal.sync-modal { width: 460px; }
+.sync-fields input[type=text], .sync-fields input[type=password] { width: 100%; }
+.sync-checks { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.sync-checks input[type=password], .sync-checks input[type=text] { margin-top: 6px; }

@@ -507,3 +507,30 @@ func TestColorAndTags(t *testing.T) {
 		t.Errorf("cor inválida ficou: %q", s.Color)
 	}
 }
+
+func TestMergeAndReplaceSync(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "s.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := st.Save(Session{Name: "a", Host: "h1", User: "u"})
+	added, err := st.MergeSync([]Session{
+		{ID: a.ID, Name: "a2", Host: "h9", User: "u"}, // mesmo ID: fica o local
+		{ID: "x1", Name: "b", Host: "h2", User: "u"},
+		{ID: "x2", Name: "c", Host: "h1", User: "u"},  // mesmo destino: ignorada
+		{ID: "x3", Name: "ruim", Host: "", User: "u"}, // inválida
+	}, []string{"Pasta/Sub"})
+	if err != nil || added != 1 {
+		t.Fatalf("merge: %d %v", added, err)
+	}
+	if got, ok := st.Get("x1"); !ok || got.Name != "b" {
+		t.Fatalf("ID não foi mantido: %+v", got)
+	}
+	if len(st.Folders()) != 1 {
+		t.Fatalf("pastas: %v", st.Folders())
+	}
+	n, err := st.ReplaceAll([]Session{{ID: "z", Name: "z", Host: "hz", User: "u"}}, nil)
+	if err != nil || n != 1 || len(st.List()) != 1 || len(st.Folders()) != 0 {
+		t.Fatalf("replace: %d %v %v", n, err, st.List())
+	}
+}
