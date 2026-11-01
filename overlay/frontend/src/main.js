@@ -24,6 +24,7 @@ import { initConnect } from './connect.js'
 import { attachHighlight } from './highlight.js'
 import { createZmodem } from './zmodemfx.js'
 import { createTrzsz } from './trzszfx.js'
+import { setLigatures } from './ligatures.js'
 import { batchDialog } from './batch.js'
 import { syncDialog, syncOnOpen } from './sync.js'
 import { setLang } from './i18n.js'
@@ -916,13 +917,8 @@ async function startTab(s, secret) {
   activate(id) // precisa estar visível para o fit() calcular colunas/linhas
   if (isTerm) {
     term.open(host)
-    if (settings.webgl) {
-      try {
-        const gl = new WebglAddon()
-        gl.onContextLoss(() => gl.dispose())
-        term.loadAddon(gl)
-      } catch { /* sem GPU: fica no renderizador padrão */ }
-    }
+    syncRenderer(tab)
+    setLigatures(term, settings.ligatures)
     try { fit.fit() } catch { /* ainda sem tamanho */ }
     tab.hl = attachHighlight(term)
     // listeners ANTES de conectar, para não perder o prompt inicial
@@ -1035,10 +1031,28 @@ function pasteInto(tab) {
   navigator.clipboard.readText().then((t) => { if (t) tab.term.paste(t) }).catch(() => {})
 }
 
+/** Renderização por GPU (WebGL). As ligaduras dependem dela: o renderizador padrão fixa o espaçamento entre letras. */
+function syncRenderer(tab) {
+  const want = settings.webgl || settings.ligatures
+  if (want && !tab.gl) {
+    try {
+      const gl = new WebglAddon()
+      gl.onContextLoss(() => { gl.dispose(); tab.gl = null })
+      tab.term.loadAddon(gl)
+      tab.gl = gl
+    } catch { tab.gl = null /* sem GPU: fica no renderizador padrão */ }
+  } else if (!want && tab.gl) {
+    try { tab.gl.dispose() } catch { /* já descartado */ }
+    tab.gl = null
+  }
+}
+
 function applyTermSettings(tab) {
   if (!tab.term) return
   const o = termOptions()
   for (const [k, v] of Object.entries(o)) tab.term.options[k] = v
+  syncRenderer(tab)
+  setLigatures(tab.term, settings.ligatures)
   tab.pane.style.background = o.theme.background
   tab.hl?.refresh()
   try { tab.fit.fit() } catch { /* oculto */ }

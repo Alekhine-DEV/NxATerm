@@ -125,6 +125,8 @@ Remover da lista¦Remove from list¦Quitar de la lista
 Remover imagem¦Remove image¦Quitar imagen
 Removido dos favoritos¦Removed from favorites¦Quitado de favoritos
 Renderização por GPU (novas abas)¦GPU rendering (new tabs)¦Renderizado por GPU (pestañas nuevas)
+Renderização por GPU¦GPU rendering¦Renderizado por GPU
+Ligaduras de fonte¦Font ligatures¦Ligaduras de fuente
 Renomear¦Rename¦Renombrar
 Renomear ou mover pasta¦Rename or move folder¦Renombrar o mover carpeta
 Renomear ou mover pasta...¦Rename or move folder...¦Renombrar o mover carpeta...

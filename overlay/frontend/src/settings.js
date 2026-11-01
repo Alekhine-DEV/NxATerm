@@ -7,6 +7,26 @@ export const FONTS = {
   'Cascadia Mono': '"Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace',
   'Courier New': '"Courier New", Courier, monospace',
   'Lucida Console': '"Lucida Console", Consolas, monospace',
+  // fontes com ligaduras: só aparecem na lista quando estão instaladas
+  'Cascadia Code': '"Cascadia Code", "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace',
+  'Fira Code': '"Fira Code", "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace',
+  'JetBrains Mono': '"JetBrains Mono", "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace',
+}
+const OPTIONAL_FONTS = ['Cascadia Code', 'Fira Code', 'JetBrains Mono']
+
+let fontCtx
+/** A fonte está instalada? (a largura muda em relação às fontes genéricas quando ela existe) */
+function fontInstalled(name) {
+  try {
+    fontCtx ||= document.createElement('canvas').getContext('2d')
+    const w = (family) => { fontCtx.font = `32px ${family}`; return fontCtx.measureText('mmmmmmmmmmlli').width }
+    return ['serif', 'sans-serif', 'monospace'].some((g) => w(`"${name}", ${g}`) !== w(g))
+  } catch { return true }
+}
+
+/** Fontes oferecidas na configuração: as de sempre mais as de ligaduras que existem no computador. */
+export function fontChoices() {
+  return Object.keys(FONTS).filter((k) => !OPTIONAL_FONTS.includes(k) || k === settings.font || fontInstalled(k))
 }
 
 /** Temas do terminal: os que vêm no app mais os criados/importados pelo usuário. */
@@ -57,6 +77,7 @@ export const DEFAULTS = {
   workspaces: {}, // espaços de trabalho: { nome: { items: [sessão], layout } }
   zmodem: true, // transferências rz/sz pelo terminal
   trzsz: true, // transferências trz/tsz pelo terminal
+  ligatures: false, // ligaduras de fonte (->, =>, !=...)
   inlineImages: true, // mostra imagens no terminal (sixel e protocolo do iTerm2)
   ai: { preset: 'openai', baseUrl: 'https://api.openai.com/v1', model: '', agent: false, withScreen: true, extra: '', remember: false }, // assistente (a chave não fica aqui)
   mcp: { enabled: false, port: 7399 }, // servidor MCP local
@@ -90,7 +111,7 @@ export function normalizeSettings() {
   settings.bgBlur = clampNum(settings.bgBlur, 0, 30, 0)
   settings.termOpacity = clampF(settings.termOpacity, 0.2, 1, 1)
   settings.uiOpacity = clampF(settings.uiOpacity, 0.4, 1, DEFAULTS.uiOpacity)
-  for (const k of ['windowTransparent', 'webgl']) settings[k] = !!settings[k]
+  for (const k of ['windowTransparent', 'webgl', 'ligatures']) settings[k] = !!settings[k]
   for (const k of ['unicode11', 'inlineImages', 'zmodem', 'trzsz']) settings[k] = settings[k] !== false
   for (const k of ['tray', 'closeToTray']) settings[k] = !!settings[k]
   settings.checkUpdates = settings.checkUpdates !== false

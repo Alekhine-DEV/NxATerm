@@ -1,7 +1,7 @@
 // Janela de configurações (em abas) e os editores de tema.
 import { Api } from './api.js'
 import { h, toast, cleanErr, openModal, closeModal, confirmBox } from './util.js'
-import { settings, saveSettings, FONTS, allTermThemes } from './settings.js'
+import { settings, saveSettings, fontChoices, allTermThemes } from './settings.js'
 import {
   BUILTIN_THEMES, ANSI_KEYS, THEME_KEYS, cleanTheme, themeFromITerm, themeFromJSON, themeToJSON,
 } from './termthemes.js'
@@ -16,7 +16,7 @@ const KEYS = [
   'font', 'fontSize', 'theme', 'cursorStyle', 'cursorBlink', 'scrollback', 'copyOnSelect', 'rightClick',
   'autoSftp', 'monitoring', 'followFolder', 'termSync', 'proxy', 'editor', 'multiInstance', 'tray', 'closeToTray', 'globalHotkey', 'checkUpdates', 'lang',
   'uiTheme', 'uiThemes', 'customThemes', 'customCss', 'bgOpacity', 'bgBlur', 'termOpacity',
-  'windowTransparent', 'uiOpacity', 'unicode11', 'webgl', 'inlineImages', 'zmodem', 'trzsz', 'highlight',
+  'windowTransparent', 'uiOpacity', 'unicode11', 'webgl', 'inlineImages', 'zmodem', 'trzsz', 'ligatures', 'highlight',
 ]
 
 const TABS = [['term', 'Terminal'], ['look', 'Aparência'], ['files', 'Arquivos'], ['conn', 'Conexão'], ['sys', 'Sistema']]
@@ -110,7 +110,7 @@ function show(st) {
     renderRules()
     panes.term = [
       h('div', { class: 'row' },
-        h('div', {}, field('Fonte', sel('font', Object.keys(FONTS).map((k) => [k, k])))),
+        h('div', {}, field('Fonte', sel('font', fontChoices().map((k) => [k, k])))),
         h('div', { class: 'narrow' }, field('Tamanho', num('fontSize', 8, 32)))),
       h('label', {}, 'Tema de cores'), themeSel, prev,
       h('div', { class: 'set-actions' },
@@ -154,7 +154,8 @@ function show(st) {
       h('h3', {}, 'Exibição'),
       check('unicode11', 'Largura correta de emojis e caracteres largos'),
       check('inlineImages', 'Imagens no terminal (sixel e iTerm2)'),
-      check('webgl', 'Renderização por GPU (novas abas)'),
+      check('webgl', 'Renderização por GPU'),
+      check('ligatures', 'Ligaduras de fonte'),
       check('zmodem', 'Transferir arquivos pelo terminal (Zmodem: rz e sz)'),
       check('trzsz', 'Transferir arquivos pelo terminal (Trzsz: trz e tsz)'),
       h('h3', {}, 'Realce de palavras'),
