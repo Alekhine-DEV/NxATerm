@@ -23,6 +23,7 @@ import { applyAppearance, setBackgroundData, setStartupTransparent } from './uit
 import { initConnect } from './connect.js'
 import { attachHighlight } from './highlight.js'
 import { createZmodem } from './zmodemfx.js'
+import { batchDialog } from './batch.js'
 import { initFiles, renderSide, buildFileTab } from './files.js'
 import { TYPE_INFO, typeOf, hasFiles, hasSSH, hasTerminal, sessionSummary, isWindows } from './sessiontypes.js'
 
@@ -118,6 +119,7 @@ const MENUS = {
   Ferramentas: () => [
     { label: 'MultiExec', kbd: keyOf('multiexec'), checked: me.open, icon: 'multiexec', onclick: toggleMultiexec },
     { label: 'Túneis SSH...', kbd: keyOf('tunnels'), icon: 'tunnel', onclick: openTunnels },
+    { label: 'Executar em lote...', icon: 'playall', onclick: () => batchDialog(sessions) },
     { label: 'Gerador de chaves SSH...', icon: 'key', onclick: keygenDialog },
   ],
   Macros: () => [
@@ -532,6 +534,7 @@ function treeMenu(path = '') {
     ...(inFolder ? [
       { sep: true },
       { label: 'Abrir todas as sessões da pasta', icon: 'playall', onclick: () => openFolder(path) },
+      { label: 'Executar comando em lote na pasta...', icon: 'send', onclick: () => batchDialog(sessions, { ids: sessions.filter((x) => x.folder === path || x.folder.startsWith(path + '/')).map((x) => x.id) }) },
       { label: 'Renomear ou mover pasta...', icon: 'pencil', onclick: () => renameFolder(path) },
       { label: 'Excluir pasta...', icon: 'trash', danger: true, onclick: () => deleteFolder(path) },
       { label: collapsed.has(path) ? 'Expandir esta pasta' : 'Recolher esta pasta', onclick: () => { collapsed.has(path) ? collapsed.delete(path) : collapsed.add(path); renderTree() } },

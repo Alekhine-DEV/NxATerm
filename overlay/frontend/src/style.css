@@ -583,3 +583,22 @@ input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid v
 .macro .mini.on { color: var(--accent); }
 .macro-sess { max-height: 130px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
 .macro-sess label.check { margin: 4px 0; }
+
+/* ---------- execução em lote ---------- */
+.modal.batch-modal { width: 820px; }
+.batch-cols { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+.batch-list { height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; margin-top: 8px; padding: 4px 6px; }
+.batch-item { display: flex !important; align-items: center; gap: 8px; margin: 3px 0 !important; }
+.batch-right textarea { width: 100%; resize: vertical; }
+.batch-results { max-height: 420px; overflow-y: auto; margin: 8px -4px; }
+.batch-res { border-bottom: 1px solid var(--border); }
+.batch-head { display: flex; align-items: center; gap: 10px; padding: 7px 8px; cursor: pointer; }
+.batch-head:hover { background: var(--g-2a2a2a); }
+.batch-head .org-sub { max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+.batch-out { margin: 0; padding: 8px 12px; background: var(--g-0e0e0e); font: 12px Consolas, "DejaVu Sans Mono", monospace; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; user-select: text; }
+.batch-cmd { font: 12px Consolas, "DejaVu Sans Mono", monospace; color: var(--muted); margin-bottom: 4px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--g-777777); }
+.dot.ok { background: var(--ok); }
+.dot.err { background: var(--danger); }
+.dot.run { background: var(--accent); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
