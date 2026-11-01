@@ -29,7 +29,8 @@ import { setLang } from './i18n.js'
 import { initAi, renderAiPanel } from './ai.js'
 import { checkUpdates } from './updates.js'
 import { initFiles, renderSide, buildFileTab } from './files.js'
-import { TYPE_INFO, typeOf, hasFiles, hasSSH, hasTerminal, sessionSummary, isWindows } from './sessiontypes.js'
+import { TYPE_INFO, typeOf, hasFiles, hasSSH, hasTerminal, opensExternally, sessionSummary, isWindows } from './sessiontypes.js'
+import { createVncView, connectVnc, disposeVnc } from './vnc.js'
 
 const Events = Runtime.Events
 
@@ -767,7 +768,28 @@ async function askSecret(title, label, key) {
   return r && { value: r.value, remember: r.remember, key }
 }
 
+async function openExternal(s) {
+  let password = ''
+  // o cliente RDP do Linux aceita a senha pela entrada padrão; no Windows e no macOS o próprio cliente pergunta
+  if (typeOf(s) === 'rdp' && !isWindows && /Linux|X11/.test(navigator.userAgent)) {
+    const key = memoKey('pw', s)
+    if (memo.has(key)) password = memo.get(key)
+    else {
+      const r = await promptBox({ title: 'Senha', label: `Senha de ${s.user || s.host} (opcional)`, secret: true, ok: 'Continuar', remember: 'Memorizar até fechar o NxATerm' })
+      if (r === null) return
+      password = r.value
+      if (r.remember && password) memo.set(key, password)
+    }
+  }
+  try {
+    await Api.OpenRemote(s, password)
+    recordHistory(s)
+    rememberRecent(s)
+  } catch (e) { toast(cleanErr(e), true) }
+}
+
 async function openSession(s) {
+  if (opensExternally(s)) return openExternal(s)
   let secret = ''
   let save = null // chave onde guardar a senha depois que a conexão der certo
   let fromMemo = false
@@ -820,6 +842,8 @@ async function startTab(s, secret) {
   const prevActive = activeId
   const kind = typeOf(s)
   const isTerm = hasTerminal(s)
+  const isVnc = kind === 'vnc'
+  let vncView = null
   const id = 'tab' + (++tabCounter) + '-' + Math.random().toString(36).slice(2, 8)
   const num = ++tabNumber
   const label = `${num}. ${s.name}`
@@ -853,6 +877,9 @@ async function startTab(s, secret) {
       h('div', { class: 'pane-head' }, h('span', { class: 'pane-title' }, label)),
       host,
       h('label', { class: 'pane-foot' }, excl, ` Excluir "${label}" do modo MultiExec`))
+  } else if (isVnc) {
+    vncView = createVncView(label)
+    pane = vncView.pane
   } else {
     pane = h('div', { class: 'pane files hidden' }, h('div', { class: 'pane-head' }, h('span', { class: 'pane-title' }, label)))
   }
@@ -882,7 +909,7 @@ async function startTab(s, secret) {
     id, kind, session: s, secret, label, term, fit, search, pane, host, tabEl, excl,
     dead: false, ready: false, unsub: [], searchBar: null, remote: null, local: null,
     stats: null, statsFails: 0, statsBusy: false, noStats: false,
-    followInstalled: false, cwd: '',
+    followInstalled: false, cwd: '', vnc: vncView ? vncView.ctl : null,
   }
   tabs.set(id, tab)
   activate(id) // precisa estar visível para o fit() calcular colunas/linhas
@@ -910,7 +937,8 @@ async function startTab(s, secret) {
   tab.unsub.push(Events.On('term:closed:' + id, (ev) => markDead(id, payload(ev))))
 
   try {
-    await Api.Connect(id, s, secret, term ? term.cols : 0, term ? term.rows : 0)
+    if (isVnc) await connectVnc({ session: s, host: vncView.host, ctl: vncView.ctl, onClosed: (reason) => markDead(id, reason) })
+    else await Api.Connect(id, s, secret, term ? term.cols : 0, term ? term.rows : 0)
   } catch (e) {
     disposeTab(id)
     activate(prevActive)
@@ -926,7 +954,7 @@ async function startTab(s, secret) {
       if (settings.followFolder) setTimeout(() => installFollow(tab), 700)
     }
     term.focus()
-  } else {
+  } else if (!isVnc) {
     buildFileTab(tab)
   }
   renderTree()
@@ -1017,6 +1045,7 @@ function markDead(id, reason) {
     t.term.write('\r\n\x1b[33m[conexão encerrada' + (reason ? ': ' + reason : '') + ' — pressione Enter para reconectar]\x1b[0m\r\n')
   }
   t.deadReason = reason
+  if (t.vnc) toast('Conexão VNC encerrada' + (reason ? ': ' + reason : ''))
   t.remote?.render()
   renderTree()
   renderMultiexec()
@@ -1026,7 +1055,7 @@ function markDead(id, reason) {
 function closeTab(id) {
   const t = tabs.get(id)
   if (!t) return
-  if (!t.dead) Api.Close(id).catch(() => {})
+  if (!t.dead && t.kind !== 'vnc') Api.Close(id).catch(() => {})
   const order = [...tabs.keys()]
   const idx = order.indexOf(id)
   disposeTab(id)
@@ -1046,6 +1075,7 @@ function disposeTab(id) {
   t.unsub.forEach((u) => { try { u() } catch { /* já removido */ } })
   try { t.hl?.stop() } catch { /* ok */ }
   try { t.zm?.dispose() } catch { /* ok */ }
+  if (t.vnc) disposeVnc(t.vnc)
   try { if (t.term) t.term.dispose() } catch { /* já removido */ }
   t.pane.remove()
   t.tabEl.classList.add('closing')

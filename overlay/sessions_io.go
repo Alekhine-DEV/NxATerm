@@ -143,6 +143,14 @@ func sessionSummaryGo(s store.Session) string {
 		return fmt.Sprintf("%s:%d", s.Host, s.Port)
 	case store.TypeFTP:
 		return fmt.Sprintf("ftp://%s:%d", s.Host, s.Port)
+	case store.TypeRDP:
+		return fmt.Sprintf("rdp://%s:%d", s.Host, s.Port)
+	case store.TypeVNC:
+		return fmt.Sprintf("vnc://%s:%d", s.Host, s.Port)
+	case store.TypeSpice:
+		return fmt.Sprintf("spice://%s:%d", s.Host, s.Port)
+	case store.TypeWeb:
+		return s.URL
 	case store.TypeSerial:
 		return fmt.Sprintf("%s · %d baud", s.SerialPort, s.BaudRate)
 	case store.TypeShell:

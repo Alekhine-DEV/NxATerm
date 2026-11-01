@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,6 +26,10 @@ const (
 	TypeShell  = "shell"
 	TypeWSL    = "wsl"
 	TypeFTP    = "ftp"
+	TypeRDP    = "rdp"   // área de trabalho remota (cliente do sistema)
+	TypeVNC    = "vnc"   // VNC dentro do app
+	TypeSpice  = "spice" // Spice (cliente do sistema)
+	TypeWeb    = "web"   // página da web em janela própria
 )
 
 // Session é um perfil de conexão (SSH, SFTP, Telnet, serial, shell local ou WSL).
@@ -32,7 +37,8 @@ type Session struct {
 	ID             string `json:"id"`
 	Type           string `json:"type"` // um dos Type* acima; vazio = ssh (perfis antigos)
 	Name           string `json:"name"`
-	Folder         string `json:"folder"` // pasta para organizar na barra lateral, ex: "Produção/Web"
+	URL            string `json:"url,omitempty"` // tipo web: endereço http(s)://
+	Folder         string `json:"folder"`        // pasta para organizar na barra lateral, ex: "Produção/Web"
 	Host           string `json:"host"`
 	Port           int    `json:"port"`
 	User           string `json:"user"`
@@ -258,6 +264,41 @@ func Normalize(in Session) (Session, error) {
 			}
 		}
 
+	case TypeRDP, TypeVNC, TypeSpice:
+		def := map[string]int{TypeRDP: 3389, TypeVNC: 5900, TypeSpice: 5900}[in.Type]
+		if err := normalizeRemote(&in, def, false); err != nil {
+			return in, err
+		}
+		if in.Type != TypeRDP {
+			in.User = ""
+		}
+		if in.Type == TypeVNC { // o VNC passa pelo app: aceita proxy e servidor de salto
+			in.AuthMethod, in.KeyPath, in.X11 = "password", "", false
+		} else {
+			in.clearConnection()
+		}
+		in.Encoding, in.TermType, in.StartDir, in.Env, in.StartupCommand = "", "", "", "", ""
+		if in.Name == "" {
+			if in.User != "" {
+				in.Name = in.User + "@" + in.Host
+			} else {
+				in.Name = in.Host
+			}
+		}
+
+	case TypeWeb:
+		u, err := CleanWebURL(in.URL)
+		if err != nil {
+			return in, err
+		}
+		in.URL = u
+		in.Host, in.User, in.Port = "", "", 0
+		in.clearConnection()
+		in.Encoding, in.TermType, in.StartDir, in.Env, in.StartupCommand = "", "", "", "", ""
+		if in.Name == "" {
+			in.Name = webHost(u)
+		}
+
 	default:
 		return in, fmt.Errorf("tipo de sessão inválido: %q", in.Type)
 	}
@@ -468,6 +509,8 @@ func key(s Session) string {
 		return "shell|" + strings.ToLower(s.Shell)
 	case TypeWSL:
 		return "wsl|" + strings.ToLower(s.Distro)
+	case TypeWeb:
+		return "web|" + strings.ToLower(s.URL)
 	}
 	return fmt.Sprintf("%s|%s@%s:%d", t, strings.ToLower(s.User), strings.ToLower(s.Host), s.Port)
 }
@@ -583,4 +626,34 @@ func (s *Store) ReplaceAll(list []Session, folders []string) (kept int, err erro
 		return len(out), err
 	}
 	return len(out), s.flushFolders()
+}
+
+// CleanWebURL confere o endereço de uma sessão web: só http:// ou https://, com host e sem usuário/senha embutidos.
+func CleanWebURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", errors.New("informe o endereço da página")
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.Hostname() == "" {
+		return "", errors.New("endereço inválido")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", errors.New("use um endereço http:// ou https://")
+	}
+	if u.User != nil {
+		return "", errors.New("não coloque usuário e senha no endereço")
+	}
+	return u.String(), nil
+}
+
+func webHost(u string) string {
+	p, err := url.Parse(u)
+	if err != nil || p.Host == "" {
+		return u
+	}
+	return p.Host
 }

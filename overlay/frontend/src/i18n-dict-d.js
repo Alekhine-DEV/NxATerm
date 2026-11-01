@@ -43,4 +43,15 @@ MCP: {0}¦MCP: {0}¦MCP: {0}
 Ollama (local)¦Ollama (local)¦Ollama (local)
 Outro¦Other¦Otro
 Parar¦Stop¦Detener
+Texto enviado¦Text sent¦Texto enviado
+Conexão VNC encerrada¦VNC connection closed¦Conexión VNC cerrada
+Conexão VNC encerrada: {0}¦VNC connection closed: {0}¦Conexión VNC cerrada: {0}
+Falha de autenticação¦Authentication failed¦Falló la autenticación
+Falha de autenticação: {0}¦Authentication failed: {0}¦Falló la autenticación: {0}
+Senha de {0}¦Password for {0}¦Contraseña de {0}
+Senha de {0} (opcional)¦Password for {0} (optional)¦Contraseña de {0} (opcional)
+conexão perdida¦connection lost¦conexión perdida
+não foi possível conectar ao servidor VNC¦could not connect to the VNC server¦no se pudo conectar al servidor VNC
+nenhum cliente RDP encontrado: instale o FreeRDP (xfreerdp)¦no RDP client found: install FreeRDP (xfreerdp)¦no se encontró ningún cliente RDP: instale FreeRDP (xfreerdp)
+nenhum cliente Spice encontrado: instale o virt-viewer (remote-viewer)¦no Spice client found: install virt-viewer (remote-viewer)¦no se encontró ningún cliente Spice: instale virt-viewer (remote-viewer)
 `

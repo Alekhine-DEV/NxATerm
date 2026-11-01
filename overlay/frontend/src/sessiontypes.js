@@ -6,6 +6,10 @@ export const TYPE_INFO = {
   telnet: { label: 'Telnet', icon: 'telnet', tabIcon: 'telnet', color: '#b07cff', defPort: 23 },
   serial: { label: 'Serial', icon: 'serial', tabIcon: 'serial', color: 'var(--g-9aa3ad)', defPort: 0 },
   shell: { label: 'Shell', icon: 'shell', tabIcon: 'shell', color: 'var(--g-cccccc)', defPort: 0 },
+  rdp: { label: 'RDP', icon: 'rdp', tabIcon: 'rdp', color: '#4aa8ff', defPort: 3389 },
+  vnc: { label: 'VNC', icon: 'vnc', tabIcon: 'vnc', color: '#6bd49a', defPort: 5900 },
+  spice: { label: 'Spice', icon: 'spice', tabIcon: 'spice', color: '#ff8a5c', defPort: 5900 },
+  web: { label: 'Web', icon: 'web', tabIcon: 'web', color: '#c58af9', defPort: 0 },
   wsl: { label: 'WSL', icon: 'wsl', tabIcon: 'wsl', color: '#4aa8ff', defPort: 0 },
 }
 
@@ -22,7 +26,11 @@ export const typeOf = (s) => (s && TYPE_INFO[s.type] ? s.type : 'ssh')
 export const FILE_ONLY = new Set(['sftp', 'ftp'])
 
 /** Tipos que abrem um terminal (todos menos os de só arquivos). */
-export const hasTerminal = (s) => !FILE_ONLY.has(typeOf(s))
+/** Tipos que abrem fora do terminal: o cliente do sistema (RDP/Spice), uma janela web ou o visualizador VNC. */
+export const NO_TERMINAL = new Set(['rdp', 'vnc', 'spice', 'web'])
+export const opensExternally = (s) => ['rdp', 'spice', 'web'].includes(typeOf(s))
+
+export const hasTerminal = (s) => !FILE_ONLY.has(typeOf(s)) && !NO_TERMINAL.has(typeOf(s))
 
 /** Tipos que passam por uma conexão SSH (aceitam túneis, permissões e cópia no servidor). */
 export const hasSSH = (s) => typeOf(s) === 'ssh' || typeOf(s) === 'sftp'
@@ -34,6 +42,10 @@ export const hasFiles = (s) => hasSSH(s) || typeOf(s) === 'ftp'
 export function sessionSummary(s) {
   switch (typeOf(s)) {
     case 'telnet': return `${s.host}:${s.port || 23}`
+    case 'rdp': return `rdp://${s.user ? s.user + '@' : ''}${s.host}${s.port && s.port !== 3389 ? ':' + s.port : ''}`
+    case 'vnc': return `vnc://${s.host}${s.port && s.port !== 5900 ? ':' + s.port : ''}`
+    case 'spice': return `spice://${s.host}${s.port && s.port !== 5900 ? ':' + s.port : ''}`
+    case 'web': return s.url || ''
     case 'serial': return `${s.serialPort} · ${s.baudRate || 9600} baud`
     case 'shell': return s.shell || 'shell padrão'
     case 'wsl': return s.distro || 'distribuição padrão'

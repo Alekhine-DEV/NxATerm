@@ -646,3 +646,11 @@ input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid v
 .ai-tok input { flex: 1; }
 .ai-log > * { flex-shrink: 0; }
 .ai-code-bar button { white-space: nowrap; }
+
+/* VNC */
+.pane.vnc { display: flex; flex-direction: column; }
+.vnc-host { flex: 1; min-height: 0; background: #000; position: relative; overflow: hidden; outline: none; }
+.pane.vnc { position: relative; }
+.vnc-bar { position: absolute; top: 8px; right: 18px; display: flex; gap: 6px; opacity: 0; transition: opacity .15s; z-index: 5; }
+.pane.vnc:hover .vnc-bar, .vnc-bar:focus-within { opacity: .95; }
+.vnc-bar .mini-t { background: var(--chrome-2); border: 1px solid var(--border); }

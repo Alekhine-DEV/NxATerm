@@ -15,7 +15,7 @@ export function editSession(existing, onChange, preset) {
     type: 'ssh', name: '', folder: '', host: '', port: 0, user: '', authMethod: 'password', keyPath: '',
     startupCommand: '', notes: '', serialPort: '', baudRate: 9600, dataBits: 8, parity: 'none', stopBits: '1',
     shell: '', distro: '', proxy: '', proxyCommand: '', jumpHost: '', encoding: '', termType: '',
-    startDir: '', env: '', x11: false, ftpSecurity: '', ftpInsecure: false, color: '', tags: [], ...(existing || preset || {}),
+    startDir: '', env: '', url: '', x11: false, ftpSecurity: '', ftpInsecure: false, color: '', tags: [], ...(existing || preset || {}),
   }
   let type = typeOf(s)
 
@@ -26,6 +26,7 @@ export function editSession(existing, onChange, preset) {
     tags: h('input', { type: 'text', value: (s.tags || []).join(', '), placeholder: 'Sem tags', spellcheck: 'false' }),
     notes: h('textarea', { rows: 2, spellcheck: 'false', placeholder: 'Sem descrição' }, s.notes || ''),
     host: h('input', { type: 'text', value: s.host, spellcheck: 'false' }),
+    url: h('input', { type: 'text', value: s.url || '', spellcheck: 'false', placeholder: 'https://' }),
     port: h('input', { type: 'number', value: s.port || TYPE_INFO[type].defPort || '', min: 1, max: 65535 }),
     user: h('input', { type: 'text', value: s.user, spellcheck: 'false' }),
     auth: h('select', {},
@@ -102,7 +103,7 @@ export function editSession(existing, onChange, preset) {
         startDir: f.startDir.value, env: f.env.value, x11: f.x11.checked,
         serialPort: f.serialPort.value, baudRate: parseInt(f.baud.value, 10) || 0,
         dataBits: parseInt(f.dataBits.value, 10) || 0, parity: f.parity.value, stopBits: f.stopBits.value,
-        shell: f.shell.value, distro: f.distro.value,
+        shell: f.shell.value, distro: f.distro.value, url: type === 'web' ? f.url.value : '',
         ftpSecurity: type === 'ftp' ? f.ftpSec.value : '', ftpInsecure: type === 'ftp' && f.ftpInsecure.checked,
       })
       closeModal()
@@ -113,7 +114,7 @@ export function editSession(existing, onChange, preset) {
     if (!(await confirmBox('Excluir sessão', `Excluir "${s.name}"? Isso não apaga nada no servidor.`))) return editSession(existing, onChange)
     try { await Api.DeleteSession(s.id); onChange() } catch (e) { toast(cleanErr(e), true) }
   }
-  for (const el of [f.host, f.user, f.port, f.name, f.folder, f.serialPort, f.baud, f.shell, f.distro]) {
+  for (const el of [f.host, f.url, f.user, f.port, f.name, f.folder, f.serialPort, f.baud, f.shell, f.distro]) {
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') save() })
   }
 
@@ -134,14 +135,14 @@ export function editSession(existing, onChange, preset) {
 
   // opções menos usadas ficam recolhidas, no mesmo painel
   const moreFor = (t) => {
-    const net = t === 'ssh' || t === 'sftp' || t === 'telnet' || t === 'ftp'
+    const net = t === 'ssh' || t === 'sftp' || t === 'telnet' || t === 'ftp' || t === 'vnc'
     const items = []
     if (net) {
       items.push(h('div', { class: 'sd-grid-eq' }, h('div', {}, h('label', {}, 'Servidor de salto'), f.jump), h('div', {}, h('label', {}, 'Proxy'), f.proxySel, f.proxy)))
-      items.push(fld('ProxyCommand', f.proxyCmd))
+      if (t !== 'vnc') items.push(fld('ProxyCommand', f.proxyCmd))
     }
     if (t === 'ftp') items.push(h('label', { class: 'check' }, f.ftpInsecure, ' Aceitar certificado não verificado'))
-    if (t !== 'sftp' && t !== 'ftp') items.push(grid('sd-grid-eq', ['Codificação', cb.encoding], t === 'serial' ? null : ['Tipo de terminal', cb.termType]))
+    if (t !== 'sftp' && t !== 'ftp' && t !== 'vnc') items.push(grid('sd-grid-eq', ['Codificação', cb.encoding], t === 'serial' ? null : ['Tipo de terminal', cb.termType]))
     if (t === 'ssh' || t === 'shell' || t === 'wsl') items.push(fld('Pasta inicial', f.startDir))
     if (t === 'ssh' || t === 'shell' || t === 'wsl') items.push(fld('Variáveis de ambiente', f.env))
     if (t === 'ssh') items.push(h('label', { class: 'check' }, f.x11, ' Encaminhar X11'))
@@ -173,6 +174,23 @@ export function editSession(existing, onChange, preset) {
           startup(),
           moreFor(t),
           sep(), book())
+      case 'rdp':
+        return h('div', { class: 'sd-form' },
+          grid('sd-grid3', ['Host remoto *', f.host], ['Usuário', f.user], ['Porta', f.port]),
+          sep(), book())
+      case 'vnc':
+        return h('div', { class: 'sd-form' },
+          grid('sd-grid2', ['Host remoto *', f.host], ['Porta', f.port]),
+          moreFor(t),
+          sep(), book())
+      case 'spice':
+        return h('div', { class: 'sd-form' },
+          grid('sd-grid2', ['Host remoto *', f.host], ['Porta', f.port]),
+          sep(), book())
+      case 'web':
+        return h('div', { class: 'sd-form' },
+          fld('Endereço', f.url),
+          sep(), book())
       case 'serial':
         return h('div', { class: 'sd-form' },
           grid('sd-grid2', ['Porta serial *', cb.serial], ['Velocidade (baud)', cb.baud]),
@@ -199,7 +217,7 @@ export function editSession(existing, onChange, preset) {
         },
       }, h('span', { class: 'tb-ico' }, icon(info.icon, 26)), info.label)))
     body.replaceChildren(panelFor(type))
-    const first = type === 'serial' ? f.serialPort : type === 'shell' ? f.shell : type === 'wsl' ? f.distro : f.host
+    const first = type === 'web' ? f.url : type === 'serial' ? f.serialPort : type === 'shell' ? f.shell : type === 'wsl' ? f.distro : f.host
     setTimeout(() => first.focus(), 0)
   }
   render()

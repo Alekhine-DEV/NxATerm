@@ -210,7 +210,7 @@ func TestSessionTypes(t *testing.T) {
 		t.Fatalf("wsl padrão: %+v", w2)
 	}
 
-	if _, err := s.Save(Session{Type: "rdp", Host: "h", User: "u"}); err == nil {
+	if _, err := s.Save(Session{Type: "mosh", Host: "h", User: "u"}); err == nil {
 		t.Error("tipo desconhecido deveria falhar")
 	}
 }
