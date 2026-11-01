@@ -10,8 +10,11 @@ jobs:
   linux:
     uses: ./.github/workflows/build-linux.yml
 
+  macos:
+    uses: ./.github/workflows/build-macos.yml
+
   publicar:
-    needs: [windows, linux]
+    needs: [windows, linux, macos]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -28,13 +31,37 @@ jobs:
         run: |
           VERSION="$(tr -d '[:space:]' < VERSION)"
           mkdir -p versao
-          cp artefatos/nxaterm-windows-installer/nxaterm-amd64-installer.exe "versao/NxATerm-$VERSION-windows-setup.exe"
-          cp artefatos/nxaterm-windows/nxaterm.exe "versao/NxATerm-$VERSION-windows-portatil.exe"
-          L=artefatos/nxaterm-linux
-          cp "$L"/*.AppImage "$L"/*.tar.gz versao/
-          cp "$L"/nxaterm.deb "versao/nxaterm_${VERSION}_amd64.deb"
-          cp "$L"/nxaterm.rpm "versao/nxaterm-${VERSION}-1.x86_64.rpm"
-          cp "$L"/nxaterm.pkg.tar.zst "versao/nxaterm-${VERSION}-1-x86_64.pkg.tar.zst"
+          find artefatos -type f | sort
+
+          # copia só se o arquivo existir (ARM64 e macOS são opcionais)
+          pegar() { if [ -f "$1" ]; then cp "$1" "versao/$2"; echo "incluído: $2"; else echo "ausente (ignorado): $2"; fi; }
+
+          # Windows: amd64 é obrigatório
+          for a in amd64 arm64; do
+            pegar "artefatos/nxaterm-windows-installer-$a/nxaterm-$a-installer.exe" "NxATerm-$VERSION-windows-$a-setup.exe"
+            pegar "artefatos/nxaterm-windows-$a/nxaterm.exe" "NxATerm-$VERSION-windows-$a-portatil.exe"
+          done
+
+          # Linux
+          for par in amd64:x86_64 arm64:aarch64; do
+            a="${par%%:*}"; m="${par##*:}"
+            L="artefatos/nxaterm-linux-$a"
+            pegar "$L/nxaterm.deb" "nxaterm_${VERSION}_$a.deb"
+            pegar "$L/nxaterm.rpm" "nxaterm-${VERSION}-1.$m.rpm"
+            pegar "$L/nxaterm.pkg.tar.zst" "nxaterm-${VERSION}-1-$m.pkg.tar.zst"
+            pegar "$L/NxATerm-$VERSION-$m.AppImage" "NxATerm-$VERSION-$m.AppImage"
+            pegar "$L/nxaterm-$VERSION-linux-$m.tar.gz" "nxaterm-$VERSION-linux-$m.tar.gz"
+          done
+
+          # macOS
+          for l in arm64 x86_64; do
+            pegar "artefatos/nxaterm-macos-$l/NxATerm-$VERSION-macos-$l.zip" "NxATerm-$VERSION-macos-$l.zip"
+          done
+
+          # o conjunto mínimo precisa existir
+          for f in "NxATerm-$VERSION-windows-amd64-setup.exe" "NxATerm-$VERSION-x86_64.AppImage" "nxaterm_${VERSION}_amd64.deb"; do
+            [ -f "versao/$f" ] || { echo "::error::faltou $f"; exit 1; }
+          done
           (cd versao && sha256sum * > SHA256SUMS && cat SHA256SUMS)
 
       - name: Criar a release
@@ -43,20 +70,21 @@ jobs:
         run: |
           VERSION="$(tr -d '[:space:]' < VERSION)"
           TAG="v$VERSION"
-          DEB="$(basename versao/*.deb)"; RPM="$(basename versao/*.rpm)"; ARCH="$(basename versao/*.pkg.tar.*)"
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
           cat > notas.md <<NOTAS
           ## NxATerm $VERSION
 
-          Gerenciador de sessões SSH, SFTP, Telnet, Serial e shell local, com MultiExec, túneis e macros.
+          Gerenciador de sessões SSH, SFTP, FTP, Telnet, Serial, shell local, RDP, VNC, Spice e Web, com MultiExec, túneis, macros, sincronização, assistente de IA e interface em português, inglês e espanhol.
 
-          **Windows 10/11**: baixe \`NxATerm-$VERSION-windows-setup.exe\` e execute. Instala só para o seu usuário. Há também a versão portátil.
+          **Windows 10/11** (x64 e ARM64): baixe \`NxATerm-$VERSION-windows-amd64-setup.exe\` (ou \`-arm64-\`) e execute. Instala só para o seu usuário. Há também a versão portátil.
 
-          **Linux** (precisa do WebKitGTK 4.1: Ubuntu 22.04+, Debian 12+, Fedora, openSUSE, Arch):
-          - Debian / Ubuntu / Mint: \`sudo apt install ./$DEB\`
-          - Fedora / openSUSE / RHEL: \`sudo dnf install ./$RPM\`
-          - Arch / Manjaro: \`sudo pacman -U $ARCH\`
+          **Linux** (x86_64 e aarch64; precisa do WebKitGTK 4.1: Ubuntu 22.04+, Debian 12+, Fedora, openSUSE, Arch):
+          - Debian / Ubuntu / Mint: \`sudo apt install ./nxaterm_${VERSION}_amd64.deb\`
+          - Fedora / openSUSE / RHEL: \`sudo dnf install ./nxaterm-${VERSION}-1.x86_64.rpm\`
+          - Arch / Manjaro: \`sudo pacman -U nxaterm-${VERSION}-1-x86_64.pkg.tar.zst\`
           - Qualquer distro: AppImage (\`chmod +x\` e execute) ou o \`.tar.gz\` com \`install.sh\`
+
+          **macOS** (Apple Silicon e Intel): baixe o \`.zip\` da sua arquitetura, descompacte e arraste o NxATerm para Aplicativos. O app não é assinado nem notarizado pela Apple: na primeira vez, clique com o botão direito e escolha Abrir, ou execute \`xattr -cr /Applications/NxATerm.app\`.
 
           Os instaladores não são assinados digitalmente; o Windows pode mostrar um aviso de editor desconhecido. Confira os arquivos com \`SHA256SUMS\`.
           NOTAS

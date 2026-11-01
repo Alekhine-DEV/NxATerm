@@ -35,12 +35,20 @@ jobs:
           wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
           ls -l darwin
 
-      - name: Configuração do produto (para depuração)
+      - name: Nome, identificador e versão do app
         working-directory: app/nxaterm
         run: |
-          cat build/config.yml
-          ls build/darwin
-          cat build/darwin/Info.plist
+          VERSION="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/VERSION")"
+          P=build/darwin/Info.plist
+          sed -i.bak \
+            -e 's|My Product|NxATerm|g' \
+            -e 's|com\.example\.nxaterm|io.github.alekhine-dev.nxaterm|g' \
+            -e "s|<string>0\.1\.0</string>|<string>$VERSION</string>|g" \
+            -e 's|This is a comment|NxATerm|g' \
+            -e 's|© 2026, My Company|© 2026 Alexandre Garcia|g' \
+            "$P"
+          rm -f "$P.bak"
+          grep -A1 -E "CFBundle(Name|Identifier|Version|ShortVersionString)|NSHumanReadableCopyright" "$P"
 
       - name: Compilar e montar o .app
         working-directory: app/nxaterm
@@ -53,8 +61,11 @@ jobs:
         run: |
           VERSION="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/VERSION")"
           mkdir -p dist
-          APP="$(ls -d bin/*.app | head -n 1)"
+          mv bin/nxaterm.app bin/NxATerm.app
+          APP=bin/NxATerm.app
           echo "app: $APP"
+          # assinatura "ad hoc" (sem certificado): o macOS em Apple Silicon exige ao menos isso
+          codesign --force --deep -s - "$APP" && codesign -dv "$APP" 2>&1 | head -5 || true
           lipo -info "$APP"/Contents/MacOS/* || true
           ditto -c -k --sequesterRsrc --keepParent "$APP" "dist/NxATerm-$VERSION-macos-${{ matrix.label }}.zip"
           (cd dist && shasum -a 256 * )
