@@ -307,6 +307,30 @@ func (a *TermService) ResumeTransfer(id string) error {
 	return nil
 }
 
+// RemoveTransfer tira uma transferência parada (concluída, com erro, cancelada ou pausada) da lista.
+func (a *TermService) RemoveTransfer(id string) error {
+	j, err := a.job(id)
+	if err != nil {
+		return err
+	}
+	switch j.snapshot().State {
+	case "queued", "running", "conflict":
+		return errors.New("cancele a transferência antes de remover")
+	}
+	x := a.xf
+	x.mu.Lock()
+	delete(x.jobs, id)
+	for i, o := range x.order {
+		if o == id {
+			x.order = append(x.order[:i], x.order[i+1:]...)
+			break
+		}
+	}
+	x.mu.Unlock()
+	a.app.Event.Emit("xfer:cleared", "")
+	return nil
+}
+
 // ClearTransfers tira da lista as transferências que já terminaram.
 func (a *TermService) ClearTransfers() {
 	x := a.xf
@@ -434,4 +458,34 @@ func (a *TermService) PickDownload(tabID string, remotePaths []string) (int, err
 	}
 	ids, err := a.Download(tabID, remotePaths, dir)
 	return len(ids), err
+}
+
+// LocalCopy copia itens locais para outra pasta local, pela fila de transferências.
+func (a *TermService) LocalCopy(paths []string, dstDir string) ([]string, error) {
+	if fi, err := os.Stat(dstDir); err != nil || !fi.IsDir() {
+		return nil, errors.New("a pasta de destino não existe")
+	}
+	var ids []string
+	for _, p := range paths {
+		name := filepath.Base(p)
+		ids = append(ids, a.enqueue("", "up", xfer.Local{}, xfer.Local{}, p, filepath.Join(dstDir, name), name, xfer.Ask))
+	}
+	return ids, nil
+}
+
+// LocalMove move itens locais para outra pasta (no mesmo disco; entre discos use copiar e apagar).
+func (a *TermService) LocalMove(paths []string, dstDir string) error {
+	for _, p := range paths {
+		dst := filepath.Join(dstDir, filepath.Base(p))
+		if dst == p {
+			continue
+		}
+		if _, err := os.Lstat(dst); err == nil {
+			return fmt.Errorf("já existe %q na pasta de destino", filepath.Base(p))
+		}
+		if err := os.Rename(p, dst); err != nil {
+			return err
+		}
+	}
+	return nil
 }

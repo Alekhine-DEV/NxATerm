@@ -47,6 +47,9 @@ export const DEFAULTS = {
   recent: [], // ids das últimas sessões abertas (tela inicial)
   keys: {}, // atalhos personalizados: { idDaAção: 'Ctrl+Shift+T' }
   proxy: '', // proxy geral das conexões (socks5://host:porta ou http://host:porta)
+  pathFavs: {}, // pastas favoritas por servidor ('usuário@host:porta') e 'local'
+  editor: '', // programa para editar arquivos remotos (vazio = padrão do sistema)
+  termSync: false, // levar o terminal junto ao navegar no painel de arquivos
   multiInstance: false, // várias janelas do app ao mesmo tempo (vale ao reabrir)
 }
 
@@ -68,6 +71,9 @@ export async function loadSettings() {
   if (!Array.isArray(settings.recent)) settings.recent = []
   if (typeof settings.proxy !== 'string') settings.proxy = ''
   settings.multiInstance = !!settings.multiInstance
+  settings.termSync = !!settings.termSync
+  if (typeof settings.editor !== 'string') settings.editor = ''
+  if (!settings.pathFavs || typeof settings.pathFavs !== 'object' || Array.isArray(settings.pathFavs)) settings.pathFavs = {}
   if (!settings.keys || typeof settings.keys !== 'object' || Array.isArray(settings.keys)) settings.keys = {}
 }
 

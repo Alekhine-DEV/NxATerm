@@ -321,6 +321,7 @@ export function settingsDialog(onApply) {
     monitoring: h('input', { type: 'checkbox', checked: settings.monitoring }),
     follow: h('input', { type: 'checkbox', checked: settings.followFolder }),
     proxy: h('input', { type: 'text', value: settings.proxy, spellcheck: 'false', placeholder: 'Sem proxy (socks5://host:1080 ou http://host:3128)' }),
+    editor: h('input', { type: 'text', value: settings.editor, spellcheck: 'false', placeholder: 'Programa padrão do sistema' }),
     multi: h('input', { type: 'checkbox', checked: settings.multiInstance }),
   }
   const linkBtn = h('button', { onclick: async () => {
@@ -339,6 +340,7 @@ export function settingsDialog(onApply) {
     settings.monitoring = f.monitoring.checked
     settings.followFolder = f.follow.checked
     settings.proxy = f.proxy.value.trim()
+    settings.editor = f.editor.value.trim()
     settings.multiInstance = f.multi.checked
     saveSettings()
     closeModal()
@@ -360,6 +362,7 @@ export function settingsDialog(onApply) {
     h('label', { class: 'check' }, f.autoSftp, ' Abrir o navegador SFTP ao conectar'),
     h('label', { class: 'check' }, f.follow, ' Navegador SFTP acompanha o terminal'),
     h('label', { class: 'check' }, f.monitoring, ' Uso do servidor na barra de status'),
+    field('Editor de arquivos remotos', f.editor),
     h('h3', {}, 'Conexão'),
     field('Proxy geral', f.proxy),
     h('h3', {}, 'Sistema'),

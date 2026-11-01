@@ -7,7 +7,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import * as Runtime from '@wailsio/runtime'
 import { Api } from './api.js'
 import {
-  $, h, icon, toast, payload, b64ToBytes, fmtSize, fmtRate, fmtUptime, joinPath, parentPath, cleanErr,
+  $, h, icon, toast, payload, b64ToBytes, fmtSize, fmtRate, fmtUptime, cleanErr,
   openModal, closeModal, modalOpen, promptBox, confirmBox, showMenu, closeMenu, attachTip, hideTip, comboOpen,
 } from './util.js'
 import { settings, loadSettings, saveSettings, termOptions } from './settings.js'
@@ -15,6 +15,7 @@ import { editSession, editMacro, tunnelDialog, keygenDialog, settingsDialog, abo
 import { keyOf, actionFor, capture } from './keys.js'
 import { memo, memoKey } from './memo.js'
 import { initConnect } from './connect.js'
+import { initFiles, renderSide, buildFileTab } from './files.js'
 import { TYPE_INFO, typeOf, hasFiles, sessionSummary, isWindows } from './sessiontypes.js'
 
 const Events = Runtime.Events
@@ -223,7 +224,7 @@ function showSide(view) {
   }
   document.querySelectorAll('.st-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === view))
   if (view === 'sftp') {
-    renderSftp()
+    renderSide()
     syncFollow()
   }
   if (view === 'macros') renderMacros()
@@ -699,7 +700,7 @@ async function startTab(s, secret) {
     term.loadAddon(search)
     term.loadAddon(new WebLinksAddon((_e, uri) => openURL(uri)))
 
-    host = h('div', { class: 'term-host' })
+    host = h('div', { class: 'term-host', id: 'drop-t-' + id, 'data-file-drop-target': true })
     excl = h('input', { type: 'checkbox' })
     excl.addEventListener('change', () => { excl.checked ? me.off.add(id) : me.off.delete(id); renderMultiexec() })
     pane = h('div', { class: 'pane term hidden', style: `background:${opts.theme.background}` },
@@ -732,8 +733,7 @@ async function startTab(s, secret) {
 
   const tab = {
     id, kind, session: s, secret, label, term, fit, search, pane, host, tabEl, excl,
-    dead: false, ready: false, unsub: [], searchBar: null, fp: null,
-    sftp: { path: '', entries: [], sel: null, loading: false, err: '' },
+    dead: false, ready: false, unsub: [], searchBar: null, remote: null, local: null,
     stats: null, statsFails: 0, statsBusy: false, noStats: false,
     followInstalled: false, cwd: '',
   }
@@ -760,13 +760,12 @@ async function startTab(s, secret) {
     wireTerminal(tab)
     if (kind === 'ssh') {
       if (settings.autoSftp) showSide('sftp')
-      else renderSftp()
+      else renderSide()
       if (settings.followFolder) setTimeout(() => installFollow(tab), 700)
     }
     term.focus()
   } else {
-    buildFilePane(tab)
-    loadDir(tab, '')
+    buildFileTab(tab)
   }
   renderTree()
   renderMultiexec()
@@ -852,14 +851,12 @@ function markDead(id, reason) {
   t.tabEl.classList.add('dead')
   if (t.term) {
     t.term.write('\r\n\x1b[33m[conexão encerrada' + (reason ? ': ' + reason : '') + ' — pressione Enter para reconectar]\x1b[0m\r\n')
-  } else {
-    t.sftp.err = ''
-    t.deadReason = reason
-    renderFilePane(t)
   }
+  t.deadReason = reason
+  t.remote?.render()
   renderTree()
   renderMultiexec()
-  if (id === activeId) { renderSftp(); renderStatus() }
+  if (id === activeId) { renderSide(); renderStatus() }
 }
 
 function closeTab(id) {
@@ -911,7 +908,7 @@ function activate(id) {
   const t = activeTab()
   if (t) t.tabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   applyLayout()
-  renderSftp()
+  renderSide()
   renderStatus()
   renderMultiexec()
   if (t) {
@@ -1064,204 +1061,6 @@ function multiPasteDialog() {
   ta.focus()
 }
 
-// ------------------------------------------------------------------ SFTP
-// O navegador existe em dois lugares: na barra lateral (para sessões SSH, mostra a aba ativa)
-// e em tela cheia dentro de uma aba de sessão SFTP. Os dois usam o mesmo estado (tab.sftp).
-function sftpMsg(text) { return h('div', { class: 'sftp-msg' }, text) }
-
-const tabHasFiles = (t) => t.kind === 'ssh' || t.kind === 'sftp'
-
-/** Redesenha o navegador de arquivos que mostra a aba t (se algum estiver visível). */
-function renderFilesFor(t) {
-  if (t.kind === 'sftp') renderFilePane(t)
-  else if (t.id === activeId) renderSftp()
-}
-
-function renderSftp() {
-  const list = $('sftp-list')
-  const pathEl = $('sftp-path')
-  const t = activeTab()
-  if (!t || t.dead) {
-    pathEl.value = ''
-    list.replaceChildren(sftpMsg(t ? 'Conexão encerrada.' : 'Nenhuma sessão aberta.'))
-    return
-  }
-  if (!tabHasFiles(t)) {
-    pathEl.value = ''
-    list.replaceChildren(sftpMsg('Sem arquivos nesta sessão.'))
-    return
-  }
-  if (t.kind === 'sftp') {
-    pathEl.value = ''
-    list.replaceChildren(sftpMsg('Esta sessão SFTP mostra os arquivos na própria aba.'))
-    return
-  }
-  if (!t.ready) { pathEl.value = ''; list.replaceChildren(sftpMsg('Conectando...')); return }
-  pathEl.value = t.sftp.path
-  if (t.sftp.loading) { list.replaceChildren(sftpMsg('Carregando...')); return }
-  if (t.sftp.err) { list.replaceChildren(sftpMsg('Erro: ' + t.sftp.err)); return }
-  if (!t.sftp.path) {
-    if (sideView === 'sftp') loadDir(t, '')
-    return
-  }
-  const rows = t.sftp.entries.map((e) => fileRow(t, e))
-  list.replaceChildren(...(rows.length ? rows : [sftpMsg('Pasta vazia')]))
-}
-
-/** Monta a tela de arquivos de uma aba SFTP (barra de ferramentas, caminho e lista). */
-function buildFilePane(t) {
-  const pathEl = h('input', { class: 'fp-path', type: 'text', spellcheck: 'false', placeholder: '/' })
-  pathEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !t.dead) loadDir(t, pathEl.value) })
-  const list = h('div', { class: 'fp-list' })
-  t.fp = { pathEl, list }
-  t.pane.append(
-    h('div', { class: 'fp-top' }, h('div', { class: 'iconbar' }, sftpButtons(() => t)), pathEl),
-    h('div', { class: 'fp-cols' },
-      h('span', { class: 'fn' }, 'Nome'), h('span', { class: 'fs' }, 'Tamanho'),
-      h('span', { class: 'fd' }, 'Modificado'), h('span', { class: 'fm' }, 'Permissões')),
-    list)
-}
-
-function renderFilePane(t) {
-  if (!t.fp) return
-  const { pathEl, list } = t.fp
-  pathEl.value = t.sftp.path
-  if (t.dead) {
-    list.replaceChildren(h('div', { class: 'sftp-msg' },
-      'Conexão encerrada' + (t.deadReason ? ': ' + t.deadReason : '') + '. ',
-      h('button', { class: 'mini-link', onclick: () => reconnectTab(t) }, 'Reconectar')))
-    return
-  }
-  if (t.sftp.loading) { list.replaceChildren(sftpMsg('Carregando...')); return }
-  if (t.sftp.err) {
-    list.replaceChildren(h('div', { class: 'sftp-msg' }, 'Erro: ' + t.sftp.err + ' ',
-      h('button', { class: 'mini-link', onclick: () => loadDir(t, t.sftp.path) }, 'Tentar de novo')))
-    return
-  }
-  const rows = t.sftp.entries.map((e) => fileRow(t, e, true))
-  list.replaceChildren(...(rows.length ? rows : [sftpMsg('Pasta vazia')]))
-}
-
-async function loadDir(t, path) {
-  t.sftp.loading = true
-  t.sftp.err = ''
-  renderFilesFor(t)
-  try {
-    const res = await Api.SFTPList(t.id, path)
-    t.sftp.path = res.path
-    t.sftp.entries = res.entries || []
-    t.sftp.sel = null
-  } catch (e) {
-    t.sftp.err = cleanErr(e)
-  }
-  t.sftp.loading = false
-  renderFilesFor(t)
-}
-
-function selectedEntry(t) {
-  return t.sftp.entries.find((e) => e.name === t.sftp.sel) || null
-}
-
-const fmtDate = (unix) => (unix ? new Date(unix * 1000).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '')
-
-function fileRow(t, e, wide = false) {
-  const full = joinPath(t.sftp.path, e.name)
-  const row = h('div', {
-    class: 'frow' + (wide ? ' wide' : '') + (e.isDir ? ' dir' : '') + (t.sftp.sel === e.name ? ' sel' : ''), title: e.mode,
-    onclick: () => { t.sftp.sel = e.name; renderFilesFor(t) },
-    ondblclick: () => (e.isDir ? loadDir(t, full) : sftpDownload(t, full)),
-  },
-  h('span', { class: 'fi' }, icon(e.isDir ? 'folder' : 'file', 15)),
-  h('span', { class: 'fn' }, e.name),
-  h('span', { class: 'fs' }, e.isDir ? '' : fmtSize(e.size)),
-  wide ? h('span', { class: 'fd' }, fmtDate(e.modTime)) : null,
-  wide ? h('span', { class: 'fm' }, e.mode) : null)
-  row.addEventListener('contextmenu', (ev) => {
-    ev.preventDefault()
-    t.sftp.sel = e.name
-    renderFilesFor(t)
-    showMenu(ev.clientX, ev.clientY, [
-      e.isDir ? { label: 'Abrir', onclick: () => loadDir(t, full) } : { label: 'Baixar...', icon: 'download', onclick: () => sftpDownload(t, full) },
-      { label: 'Renomear...', icon: 'pencil', onclick: () => sftpRename(t, e, full) },
-      { label: 'Copiar caminho', icon: 'copy', onclick: () => copyText(full) },
-      { sep: true },
-      { label: 'Excluir', icon: 'trash', danger: true, onclick: () => sftpRemove(t, e, full) },
-    ])
-  })
-  return row
-}
-
-/** Botões do navegador de arquivos; getTab diz a qual aba eles se aplicam. */
-function sftpButtons(getTab) {
-  const need = (fn) => () => {
-    const t = getTab()
-    if (!t || t.dead || !t.ready || !tabHasFiles(t)) return toast('Abra uma sessão SSH ou SFTP primeiro.', true)
-    fn(t)
-  }
-  const btn = (ico, title, fn) => h('button', { class: 'ib', title, onclick: need(fn) }, icon(ico, 17))
-  return [
-    btn('up', 'Pasta acima', (t) => loadDir(t, parentPath(t.sftp.path || '/'))),
-    btn('refresh', 'Atualizar', (t) => loadDir(t, t.sftp.path)),
-    btn('upload', 'Enviar arquivos para esta pasta', sftpUpload),
-    btn('download', 'Baixar o arquivo selecionado', (t) => {
-      const e = selectedEntry(t)
-      if (!e || e.isDir) return toast('Selecione um arquivo para baixar.', true)
-      sftpDownload(t, joinPath(t.sftp.path, e.name))
-    }),
-    btn('newfolder', 'Nova pasta', sftpMkdir),
-    btn('pencil', 'Renomear o item selecionado', (t) => {
-      const e = selectedEntry(t)
-      if (!e) return toast('Selecione um item.', true)
-      sftpRename(t, e, joinPath(t.sftp.path, e.name))
-    }),
-    btn('trash', 'Excluir o item selecionado', (t) => {
-      const e = selectedEntry(t)
-      if (!e) return toast('Selecione um item.', true)
-      sftpRemove(t, e, joinPath(t.sftp.path, e.name))
-    }),
-  ]
-}
-
-function buildSftpBar() {
-  $('sftp-bar').append(...sftpButtons(() => activeTab()))
-  $('sftp-path').addEventListener('keydown', (e) => {
-    const t = activeTab()
-    if (e.key === 'Enter' && t && !t.dead && t.kind === 'ssh') loadDir(t, e.target.value)
-  })
-}
-
-async function sftpDownload(t, full) {
-  try {
-    const saved = await Api.SFTPDownload(t.id, full)
-    if (saved) toast('Salvo em ' + saved)
-  } catch (e) { toast(cleanErr(e), true) }
-}
-
-async function sftpUpload(t) {
-  try {
-    const n = await Api.SFTPUpload(t.id, t.sftp.path)
-    if (n > 0) { toast(n + ' arquivo(s) enviado(s)'); loadDir(t, t.sftp.path) }
-  } catch (e) { toast(cleanErr(e), true) }
-}
-
-async function sftpMkdir(t) {
-  const name = await promptBox({ title: 'Nova pasta', label: 'Nome da pasta', ok: 'Criar' })
-  if (!name) return
-  try { await Api.SFTPMkdir(t.id, joinPath(t.sftp.path, name)); loadDir(t, t.sftp.path) } catch (e) { toast(cleanErr(e), true) }
-}
-
-async function sftpRename(t, e, full) {
-  const name = await promptBox({ title: 'Renomear', label: 'Novo nome', value: e.name, ok: 'Renomear' })
-  if (!name || name === e.name) return
-  try { await Api.SFTPRename(t.id, full, joinPath(t.sftp.path, name)); loadDir(t, t.sftp.path) } catch (err) { toast(cleanErr(err), true) }
-}
-
-async function sftpRemove(t, e, full) {
-  const what = e.isDir ? 'a pasta (precisa estar vazia)' : 'o arquivo'
-  if (!(await confirmBox('Excluir no servidor', `Excluir ${what} "${e.name}"? Isso não pode ser desfeito.`))) return
-  try { await Api.SFTPRemove(t.id, full, e.isDir); loadDir(t, t.sftp.path) } catch (err) { toast(cleanErr(err), true) }
-}
-
 // ------------------------------------------------------------------ seguir pasta do terminal
 // Configura o bash para avisar a pasta atual a cada prompt (sequência OSC 7).
 // O espaço inicial evita que o comando entre no histórico (HISTCONTROL=ignorespace).
@@ -1277,7 +1076,8 @@ let followTimer
 function followCwd(tab) {
   clearTimeout(followTimer)
   followTimer = setTimeout(() => {
-    if (tab.cwd && tab.cwd !== tab.sftp.path && !tab.dead) loadDir(tab, tab.cwd)
+    const r = tab.remote
+    if (r && tab.cwd && tab.cwd !== r.st.path && !tab.dead) r.load(tab.cwd, { fromTerm: true })
   }, 250)
 }
 
@@ -1435,13 +1235,13 @@ async function init() {
   buildToolbar()
   buildSidetabs()
   buildTabbar()
-  buildSftpBar()
   buildStatusbar()
   initResizer()
   initEvents()
   showSide('sessions')
   activate('home')
 
+  await initFiles({ getTab: (id) => tabs.get(id), activeTab, allTabs, reconnectTab, copyText })
   await Promise.allSettled([refreshSessions(), refreshMacros()])
   await initConnect(openSession)
 }
