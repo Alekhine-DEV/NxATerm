@@ -50,7 +50,7 @@ func (a *TermService) CheckLock(pw string) (bool, error) {
 func (a *TermService) SetLock(current, newPw string) error {
 	a.dataMu.Lock()
 	defer a.dataMu.Unlock()
-	if a.store.Locked() || a.macros.Locked() {
+	if a.store.Locked() || a.macros.Locked() || a.tombs.Locked() {
 		return secfile.ErrLocked
 	}
 	// o conteúdo atual dos arquivos, ainda com a chave antiga
@@ -77,7 +77,7 @@ func (a *TermService) SetLock(current, newPw string) error {
 func (a *TermService) unlockData(pw string) error {
 	a.dataMu.Lock()
 	defer a.dataMu.Unlock()
-	if secfile.HasKey() && !a.store.Locked() && !a.macros.Locked() {
+	if secfile.HasKey() && !a.store.Locked() && !a.macros.Locked() && !a.tombs.Locked() {
 		return nil
 	}
 	key, err := a.lock.DeriveKey(pw)
@@ -93,6 +93,9 @@ func (a *TermService) unlockData(pw string) error {
 		return fail(err)
 	}
 	if err := a.macros.Reload(); err != nil {
+		return fail(err)
+	}
+	if err := a.tombs.Reload(); err != nil {
 		return fail(err)
 	}
 	files, err := a.readSecretFiles()
@@ -129,6 +132,9 @@ func (a *TermService) writeAllData(files map[string][]byte) error {
 		errs = append(errs, err)
 	}
 	if err := a.macros.Rewrite(); err != nil {
+		errs = append(errs, err)
+	}
+	if err := a.tombs.Rewrite(); err != nil {
 		errs = append(errs, err)
 	}
 	dir := filepath.Dir(a.settingsPath)

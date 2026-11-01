@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"nxaterm/internal/secfile"
+	"nxaterm/internal/tomb"
 	"os"
 	"path/filepath"
 	"sort"
@@ -31,7 +32,11 @@ type MacroStore struct {
 	path   string
 	macros []Macro
 	locked bool // dados criptografados e ainda sem a senha de abertura
+	tombs  *tomb.Log
 }
+
+// SetTombs liga o registro de exclusões (usado pela sincronização).
+func (m *MacroStore) SetTombs(t *tomb.Log) { m.tombs = t }
 
 // OpenMacros carrega o arquivo (vazio se não existir). Se estiver criptografado e a senha de
 // abertura ainda não foi digitada, devolve o armazém vazio e bloqueado; Reload carrega depois.
@@ -163,7 +168,10 @@ func (m *MacroStore) Delete(id string) error {
 	for i := range m.macros {
 		if m.macros[i].ID == id {
 			m.macros = append(m.macros[:i], m.macros[i+1:]...)
-			return m.flush()
+			if err := m.flush(); err != nil {
+				return err
+			}
+			return m.tombs.Add(tomb.Macro, id)
 		}
 	}
 	return errors.New("macro não encontrada")
@@ -219,7 +227,7 @@ func (m *MacroStore) MergeSync(list []Macro) (added int, err error) {
 	}
 	for _, in := range list {
 		in.Name = strings.TrimSpace(in.Name)
-		if in.Name == "" || strings.TrimSpace(in.Command) == "" || (in.ID != "" && ids[in.ID]) || same[in.Name+"\x00"+in.Command] {
+		if in.Name == "" || strings.TrimSpace(in.Command) == "" || (in.ID != "" && ids[in.ID]) || same[in.Name+"\x00"+in.Command] || (in.ID != "" && m.tombs.Has(tomb.Macro, in.ID)) {
 			continue
 		}
 		in.Tags = CleanTags(in.Tags)
@@ -262,5 +270,32 @@ func (m *MacroStore) ReplaceAll(list []Macro) (int, error) {
 		out = append(out, in)
 	}
 	m.macros = out
-	return len(out), m.flush()
+	if err := m.flush(); err != nil {
+		return len(out), err
+	}
+	m.tombs.Unmark(tomb.Macro, ids2slice(ids))
+	return len(out), nil
+}
+
+// ApplyTombstones apaga aqui as macros apagadas em outro computador (registro já unido ao local).
+func (m *MacroStore) ApplyTombstones() (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.locked {
+		return 0, secfile.ErrLocked
+	}
+	kept := m.macros[:0:0]
+	removed := 0
+	for _, x := range m.macros {
+		if m.tombs.Has(tomb.Macro, x.ID) {
+			removed++
+			continue
+		}
+		kept = append(kept, x)
+	}
+	m.macros = kept
+	if removed == 0 {
+		return 0, nil
+	}
+	return removed, m.flush()
 }

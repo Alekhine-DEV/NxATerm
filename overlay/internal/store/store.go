@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/url"
 	"nxaterm/internal/secfile"
+	"nxaterm/internal/tomb"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -88,7 +89,11 @@ type Store struct {
 	foldersPath string   // pastas criadas pelo usuário (inclusive vazias)
 	folders     []string // sem duplicatas, já normalizadas
 	locked      bool     // dados criptografados e ainda sem a senha de abertura
+	tombs       *tomb.Log
 }
+
+// SetTombs liga o registro de exclusões (usado pela sincronização).
+func (s *Store) SetTombs(t *tomb.Log) { s.tombs = t }
 
 // Open carrega o arquivo (criando-o vazio se não existir). Se os dados estiverem criptografados e
 // a senha de abertura ainda não foi digitada, devolve o Store vazio e bloqueado: Reload carrega
@@ -499,7 +504,10 @@ func (s *Store) Delete(id string) error {
 	for i := range s.sessions {
 		if s.sessions[i].ID == id {
 			s.sessions = append(s.sessions[:i], s.sessions[i+1:]...)
-			return s.flush()
+			if err := s.flush(); err != nil {
+				return err
+			}
+			return s.tombs.Add(tomb.Session, id)
 		}
 	}
 	return fmt.Errorf("sessão %q não encontrada", id)
@@ -588,7 +596,7 @@ func (s *Store) MergeSync(list []Session, folders []string) (added int, err erro
 	}
 	for _, in := range list {
 		n, nerr := Normalize(in)
-		if nerr != nil || (n.ID != "" && ids[n.ID]) || keys[key(n)] {
+		if nerr != nil || (n.ID != "" && ids[n.ID]) || keys[key(n)] || (n.ID != "" && s.tombs.Has(tomb.Session, n.ID)) {
 			continue
 		}
 		if n.ID == "" || ids[n.ID] {
@@ -602,6 +610,9 @@ func (s *Store) MergeSync(list []Session, folders []string) (added int, err erro
 	}
 	foldersChanged := false
 	for _, f := range folders {
+		if s.tombs.Has(tomb.Folder, CleanFolder(f)) {
+			continue
+		}
 		if s.addFolderLocked(f) {
 			foldersChanged = true
 		}
@@ -647,7 +658,86 @@ func (s *Store) ReplaceAll(list []Session, folders []string) (kept int, err erro
 	if err = s.flush(); err != nil {
 		return len(out), err
 	}
+	// o que veio da cópia existe de novo: não pode continuar marcado como apagado
+	s.tombs.Unmark(tomb.Session, ids2slice(ids))
+	s.tombs.Unmark(tomb.Folder, s.folders)
 	return len(out), s.flushFolders()
+}
+
+func ids2slice(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// ApplyTombstones apaga aqui o que foi apagado em outro computador (registro já unido ao local).
+// Pastas só saem se estiverem vazias. Devolve quantas sessões e pastas foram removidas.
+func (s *Store) ApplyTombstones() (sessions, folders int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.locked {
+		return 0, 0, secfile.ErrLocked
+	}
+	kept := s.sessions[:0:0]
+	for _, x := range s.sessions {
+		if s.tombs.Has(tomb.Session, x.ID) {
+			sessions++
+			continue
+		}
+		kept = append(kept, x)
+	}
+	s.sessions = kept
+	for {
+		removed := false
+		for _, f := range s.folders {
+			if !s.tombs.Has(tomb.Folder, f) {
+				continue
+			}
+			busy := false
+			for _, x := range s.sessions {
+				if inFolder(x.Folder, f) {
+					busy = true
+					break
+				}
+			}
+			for _, g := range s.folders {
+				if g != f && inFolder(g, f) {
+					busy = true
+					break
+				}
+			}
+			if busy {
+				continue
+			}
+			old := s.folders
+			s.folders = nil
+			for _, g := range old {
+				if g != f {
+					s.addFolderLocked(g)
+				}
+			}
+			folders++
+			removed = true
+			break
+		}
+		if !removed {
+			break
+		}
+	}
+	if s.folders == nil {
+		s.folders = []string{}
+	}
+	if sessions > 0 {
+		if err = s.flush(); err != nil {
+			return
+		}
+	}
+	if folders > 0 {
+		err = s.flushFolders()
+	}
+	return
 }
 
 // CleanWebURL confere o endereço de uma sessão web: só http:// ou https://, com host e sem usuário/senha embutidos.

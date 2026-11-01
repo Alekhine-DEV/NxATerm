@@ -60,6 +60,7 @@ type Bundle struct {
 	Folders   json.RawMessage `json:"folders"`
 	Macros    json.RawMessage `json:"macros"`
 	Settings  json.RawMessage `json:"settings"`
+	Deleted   json.RawMessage `json:"deleted,omitempty"` // exclusões (lista de tomb.Entry)
 }
 
 // Client faz as chamadas HTTP; GistBase existe para os testes.

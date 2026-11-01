@@ -11,6 +11,7 @@ import (
 	"nxaterm/internal/secfile"
 	"nxaterm/internal/store"
 	"nxaterm/internal/syncer"
+	"nxaterm/internal/tomb"
 )
 
 // SyncSummary é o resultado de um envio ou de uma busca.
@@ -21,6 +22,7 @@ type SyncSummary struct {
 	Settings  string `json:"settings"`  // configurações da cópia (JSON) para a interface aplicar
 	UpdatedAt string `json:"updatedAt"` // quando a cópia foi gravada
 	Empty     bool   `json:"empty"`     // não havia cópia no destino
+	Removed   int    `json:"removed"`   // sessões e macros apagadas aqui porque foram apagadas em outro computador
 }
 
 func syncCtx() (context.Context, context.CancelFunc) {
@@ -37,10 +39,18 @@ func (a *TermService) SyncPush(cfg syncer.Config, settingsJSON string) (SyncSumm
 	if len(settingsJSON) > 256*1024 || !json.Valid([]byte(settingsJSON)) {
 		return SyncSummary{}, errors.New("configurações inválidas")
 	}
+	// antes de enviar, traz as exclusões que outros computadores já registraram na cópia:
+	// senão o envio as apagaria do destino e o item apagado voltaria
+	if _, err := a.mergeRemoteDeletions(cfg); err != nil {
+		return SyncSummary{}, err
+	}
 	sessions := a.store.List()
 	macros := a.macros.List()
 	var b syncer.Bundle
 	var err error
+	if b.Deleted, err = json.Marshal(a.tombs.List()); err != nil {
+		return SyncSummary{}, err
+	}
 	if b.Sessions, err = json.Marshal(sessions); err != nil {
 		return SyncSummary{}, err
 	}
@@ -58,6 +68,41 @@ func (a *TermService) SyncPush(cfg syncer.Config, settingsJSON string) (SyncSumm
 		return SyncSummary{}, err
 	}
 	return SyncSummary{GistID: id, Sessions: len(sessions), Macros: len(macros)}, nil
+}
+
+// mergeRemoteDeletions une as exclusões da cópia no destino ao registro local e apaga aqui o que
+// já foi apagado lá. Sem cópia no destino, não faz nada.
+func (a *TermService) mergeRemoteDeletions(cfg syncer.Config) (removed int, err error) {
+	ctx, cancel := syncCtx()
+	defer cancel()
+	b, err := syncer.NewClient().Pull(ctx, cfg)
+	if errors.Is(err, syncer.ErrNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return a.applyDeletions(b.Deleted)
+}
+
+// applyDeletions lê as exclusões de uma cópia, junta ao registro local e as aplica.
+func (a *TermService) applyDeletions(raw json.RawMessage) (int, error) {
+	if len(raw) == 0 {
+		return 0, nil
+	}
+	var in []tomb.Entry
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return 0, errors.New("registro de exclusões da cópia inválido")
+	}
+	if err := a.tombs.Merge(in); err != nil {
+		return 0, err
+	}
+	s, _, err := a.store.ApplyTombstones()
+	if err != nil {
+		return s, err
+	}
+	m, err := a.macros.ApplyTombstones()
+	return s + m, err
 }
 
 // SyncPull baixa a cópia. mode "merge" acrescenta o que falta (o que já existe aqui fica como está);
@@ -97,6 +142,13 @@ func (a *TermService) SyncPull(cfg syncer.Config, mode string) (SyncSummary, err
 	}
 	sum := SyncSummary{Settings: string(b.Settings), UpdatedAt: b.UpdatedAt}
 	if mode == "replace" {
+		// as exclusões da cópia valem, mas o que veio na cópia existe de novo (ReplaceAll limpa o registro)
+		var in []tomb.Entry
+		if len(b.Deleted) > 0 && json.Unmarshal(b.Deleted, &in) == nil {
+			if err := a.tombs.Merge(in); err != nil {
+				return sum, err
+			}
+		}
 		if sum.Sessions, err = a.store.ReplaceAll(sessions, folders); err != nil {
 			return sum, err
 		}
@@ -104,6 +156,9 @@ func (a *TermService) SyncPull(cfg syncer.Config, mode string) (SyncSummary, err
 			return sum, err
 		}
 		return sum, nil
+	}
+	if sum.Removed, err = a.applyDeletions(b.Deleted); err != nil {
+		return sum, err
 	}
 	if sum.Sessions, err = a.store.MergeSync(sessions, folders); err != nil {
 		return sum, err

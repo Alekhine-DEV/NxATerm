@@ -54,4 +54,5 @@ conexão perdida¦connection lost¦conexión perdida
 não foi possível conectar ao servidor VNC¦could not connect to the VNC server¦no se pudo conectar al servidor VNC
 nenhum cliente RDP encontrado: instale o FreeRDP (xfreerdp)¦no RDP client found: install FreeRDP (xfreerdp)¦no se encontró ningún cliente RDP: instale FreeRDP (xfreerdp)
 nenhum cliente Spice encontrado: instale o virt-viewer (remote-viewer)¦no Spice client found: install virt-viewer (remote-viewer)¦no se encontró ningún cliente Spice: instale virt-viewer (remote-viewer)
+{0} item(ns) apagado(s) aqui porque foram apagados em outro computador¦{0} item(s) deleted here because they were deleted on another computer¦{0} elemento(s) eliminado(s) aquí porque se eliminaron en otro equipo
 `

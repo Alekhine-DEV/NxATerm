@@ -13,6 +13,7 @@ import (
 	"nxaterm/internal/mcpsrv"
 	"nxaterm/internal/netx"
 	"nxaterm/internal/store"
+	"nxaterm/internal/tomb"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -32,6 +33,7 @@ type TermService struct {
 	terms  map[string]*termSession
 
 	macros       *store.MacroStore
+	tombs        *tomb.Log // o que foi apagado (para a sincronização propagar exclusões)
 	settingsPath string
 
 	tunMu   sync.Mutex
@@ -72,6 +74,12 @@ func NewTermService(app *application.App) (*TermService, error) {
 	if err != nil {
 		return nil, err
 	}
+	tl, err := tomb.Open(filepath.Join(dir, "deleted.json"))
+	if err != nil {
+		return nil, err
+	}
+	st.SetTombs(tl)
+	ms.SetTombs(tl)
 	return &TermService{
 		lock:         lk,
 		app:          app,
@@ -79,6 +87,7 @@ func NewTermService(app *application.App) (*TermService, error) {
 		knownHosts:   filepath.Join(dir, "known_hosts"),
 		terms:        map[string]*termSession{},
 		macros:       ms,
+		tombs:        tl,
 		settingsPath: filepath.Join(dir, "settings.json"),
 		tunnels:      map[string]*tunnel{},
 		prompts:      map[string]chan promptAnswer{},

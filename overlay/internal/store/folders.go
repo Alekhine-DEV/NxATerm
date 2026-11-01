@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"nxaterm/internal/secfile"
+	"nxaterm/internal/tomb"
 	"os"
 	"sort"
 	"strings"
@@ -97,6 +98,7 @@ func (s *Store) CreateFolder(p string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.tombs.Revive(tomb.Folder, p)
 	if s.addFolderLocked(p) {
 		return s.flushFolders()
 	}
@@ -128,14 +130,24 @@ func (s *Store) RenameFolder(from, to string) error {
 	}
 	old := s.folders
 	s.folders = nil
+	gone := []string{}
 	for _, f := range old {
+		if inFolder(f, from) {
+			gone = append(gone, f)
+		}
 		s.addFolderLocked(remap(f))
 	}
+	gone = append(gone, from)
+	s.tombs.Revive(tomb.Folder, to)
 	s.addFolderLocked(to) // a pasta renomeada passa a existir mesmo que só tivesse sessões
 	if err := s.flush(); err != nil {
 		return err
 	}
-	return s.flushFolders()
+	if err := s.flushFolders(); err != nil {
+		return err
+	}
+	// o caminho antigo deixou de existir (outros computadores precisam saber)
+	return s.tombs.Add(tomb.Folder, gone...)
 }
 
 // DeleteFolder apaga uma pasta. Com withSessions=false as sessões dela sobem para
@@ -160,11 +172,14 @@ func (s *Store) DeleteFolder(path string, withSessions bool) (int, error) {
 	}
 
 	deleted := 0
+	var goneSessions, goneFolders []string
+	goneFolders = append(goneFolders, path)
 	kept := s.sessions[:0:0]
 	for _, x := range s.sessions {
 		if inFolder(x.Folder, path) {
 			if withSessions {
 				deleted++
+				goneSessions = append(goneSessions, x.ID)
 				continue
 			}
 			x.Folder = lift(x.Folder)
@@ -179,7 +194,9 @@ func (s *Store) DeleteFolder(path string, withSessions bool) (int, error) {
 		switch {
 		case f == path:
 		case inFolder(f, path) && withSessions:
+			goneFolders = append(goneFolders, f)
 		case inFolder(f, path):
+			goneFolders = append(goneFolders, f)
 			s.addFolderLocked(lift(f))
 		default:
 			s.addFolderLocked(f)
@@ -188,7 +205,13 @@ func (s *Store) DeleteFolder(path string, withSessions bool) (int, error) {
 	if err := s.flush(); err != nil {
 		return deleted, err
 	}
-	return deleted, s.flushFolders()
+	if err := s.flushFolders(); err != nil {
+		return deleted, err
+	}
+	if err := s.tombs.Add(tomb.Session, goneSessions...); err != nil {
+		return deleted, err
+	}
+	return deleted, s.tombs.Add(tomb.Folder, goneFolders...)
 }
 
 // exportFile é o formato do arquivo de exportação do NxATerm.

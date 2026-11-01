@@ -90,6 +90,7 @@ async function pull(mode, withSettings, hooks) {
   await persistSecrets()
   await hooks.onData?.()
   if (extra) hooks.onSettings?.()
+  if (sum.removed > 0) toast(`${sum.removed} item(ns) apagado(s) aqui porque foram apagados em outro computador`)
   return mode === 'merge'
     ? `Baixado: ${sum.sessions} sessão(ões) e ${sum.macros} macro(s) novas${extra}`
     : `Substituído: ${sum.sessions} sessão(ões) e ${sum.macros} macro(s)${extra}`
