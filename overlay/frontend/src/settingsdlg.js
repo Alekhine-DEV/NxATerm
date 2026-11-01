@@ -13,7 +13,7 @@ const KEYS = [
   'font', 'fontSize', 'theme', 'cursorStyle', 'cursorBlink', 'scrollback', 'copyOnSelect', 'rightClick',
   'autoSftp', 'monitoring', 'followFolder', 'termSync', 'proxy', 'editor', 'multiInstance',
   'uiTheme', 'uiThemes', 'customThemes', 'customCss', 'bgOpacity', 'bgBlur', 'termOpacity',
-  'windowTransparent', 'uiOpacity', 'unicode11', 'webgl', 'inlineImages', 'highlight',
+  'windowTransparent', 'uiOpacity', 'unicode11', 'webgl', 'inlineImages', 'zmodem', 'highlight',
 ]
 
 const TABS = [['term', 'Terminal'], ['look', 'Aparência'], ['files', 'Arquivos'], ['conn', 'Conexão'], ['sys', 'Sistema']]
@@ -152,6 +152,7 @@ function show(st) {
       check('unicode11', 'Largura correta de emojis e caracteres largos'),
       check('inlineImages', 'Imagens no terminal (sixel e iTerm2)'),
       check('webgl', 'Renderização por GPU (novas abas)'),
+      check('zmodem', 'Transferir arquivos pelo terminal (Zmodem: rz e sz)'),
       h('h3', {}, 'Realce de palavras'),
       h('label', { class: 'check' }, hlCheck, ' Ativar'),
       ruleList,

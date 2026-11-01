@@ -47,6 +47,7 @@ export const DEFAULTS = {
   uiOpacity: 0.9, // opacidade da interface com a janela transparente
   unicode11: true, // largura correta de emojis e caracteres largos
   webgl: false, // renderizador acelerado por GPU
+  zmodem: true, // transferências rz/sz pelo terminal
   inlineImages: true, // mostra imagens no terminal (sixel e protocolo do iTerm2)
   highlight: { enabled: false, rules: [] }, // realce de palavras: rules = [{ pattern, color, regex }]
 }
@@ -73,7 +74,7 @@ export async function loadSettings() {
   settings.termOpacity = clampF(settings.termOpacity, 0.2, 1, 1)
   settings.uiOpacity = clampF(settings.uiOpacity, 0.4, 1, DEFAULTS.uiOpacity)
   for (const k of ['windowTransparent', 'webgl']) settings[k] = !!settings[k]
-  for (const k of ['unicode11', 'inlineImages']) settings[k] = settings[k] !== false
+  for (const k of ['unicode11', 'inlineImages', 'zmodem']) settings[k] = settings[k] !== false
   const hl = settings.highlight
   settings.highlight = {
     enabled: !!(hl && hl.enabled),

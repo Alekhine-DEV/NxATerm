@@ -401,6 +401,7 @@ func (a *TermService) closeAll() {
 	}
 	a.stopAllTunnels()
 	a.stopAllTransfers()
+	closeAllZmodem()
 }
 
 // dataDir devolve (e cria) a pasta de dados do app.

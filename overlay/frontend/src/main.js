@@ -21,6 +21,7 @@ import { settingsDialog } from './settingsdlg.js'
 import { applyAppearance, setBackgroundData, setStartupTransparent } from './uitheme.js'
 import { initConnect } from './connect.js'
 import { attachHighlight } from './highlight.js'
+import { createZmodem } from './zmodemfx.js'
 import { initFiles, renderSide, buildFileTab } from './files.js'
 import { TYPE_INFO, typeOf, hasFiles, hasSSH, hasTerminal, sessionSummary, isWindows } from './sessiontypes.js'
 
@@ -763,7 +764,14 @@ async function startTab(s, secret) {
     try { fit.fit() } catch { /* ainda sem tamanho */ }
     tab.hl = attachHighlight(term)
     // listeners ANTES de conectar, para não perder o prompt inicial
-    tab.unsub.push(Events.On('term:data:' + id, (ev) => term.write(b64ToBytes(payload(ev)))))
+    if (settings.zmodem && !s.encoding && ['ssh', 'serial', 'wsl', 'shell'].includes(kind)) {
+      tab.zm = createZmodem({ id, term, pane })
+    }
+    tab.unsub.push(Events.On('term:data:' + id, (ev) => {
+      const bytes = b64ToBytes(payload(ev))
+      if (tab.zm) tab.zm.consume(bytes)
+      else term.write(bytes)
+    }))
   }
   tab.unsub.push(Events.On('term:closed:' + id, (ev) => markDead(id, payload(ev))))
 
@@ -797,6 +805,7 @@ function wireTerminal(tab) {
 
   term.onData((d) => {
     if (tab.dead) { if (d === '\r') reconnectTab(tab); return }
+    if (tab.zm && tab.zm.active) return // durante o Zmodem o teclado não vai ao servidor
     for (const t of broadcastTargets(tab)) Api.Write(t.id, d).catch(() => {})
   })
   term.onResize(({ cols, rows }) => { if (!tab.dead) Api.Resize(id, cols, rows).catch(() => {}) })
@@ -902,6 +911,7 @@ function disposeTab(id) {
   if (!t) return
   t.unsub.forEach((u) => { try { u() } catch { /* já removido */ } })
   try { t.hl?.stop() } catch { /* ok */ }
+  try { t.zm?.dispose() } catch { /* ok */ }
   try { if (t.term) t.term.dispose() } catch { /* já removido */ }
   t.pane.remove()
   t.tabEl.classList.add('closing')

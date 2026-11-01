@@ -553,3 +553,7 @@ input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid v
 .cp { display: flex; align-items: center; gap: 6px; margin: 0 !important; font-size: 12px; color: var(--text) !important; }
 .row.acc { align-items: center; }
 .row.acc > input[type="color"] { flex: 0 0 34px; }
+
+/* ---------- Zmodem ---------- */
+.zm-bar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 12; display: flex; align-items: center; gap: 12px; background: var(--g-2a2a2a); border: 1px solid var(--g-484848); border-radius: 8px; padding: 8px 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); max-width: 80%; }
+.zm-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
