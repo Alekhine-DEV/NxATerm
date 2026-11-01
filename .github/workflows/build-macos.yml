@@ -1,0 +1,67 @@
+name: Build NxATerm (macOS)
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches: [ci-builds]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest   # Apple Silicon
+            label: arm64
+          - runner: macos-15-intel # Intel
+            label: x86_64
+    runs-on: ${{ matrix.runner }}
+    # um problema aqui não impede a publicação do Windows e do Linux
+    continue-on-error: true
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/preparar
+
+      - name: Testes
+        working-directory: app/nxaterm
+        run: go test ./internal/...
+
+      - name: Ícones
+        working-directory: app/nxaterm/build
+        run: |
+          wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
+          ls -l darwin
+
+      - name: Configuração do produto (para depuração)
+        working-directory: app/nxaterm
+        run: |
+          cat build/config.yml
+          ls build/darwin
+          cat build/darwin/Info.plist
+
+      - name: Compilar e montar o .app
+        working-directory: app/nxaterm
+        run: |
+          wails3 package
+          ls -l bin
+
+      - name: Zip do aplicativo
+        working-directory: app/nxaterm
+        run: |
+          VERSION="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/VERSION")"
+          mkdir -p dist
+          APP="$(ls -d bin/*.app | head -n 1)"
+          echo "app: $APP"
+          lipo -info "$APP"/Contents/MacOS/* || true
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "dist/NxATerm-$VERSION-macos-${{ matrix.label }}.zip"
+          (cd dist && shasum -a 256 * )
+
+      - name: Publicar
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxaterm-macos-${{ matrix.label }}
+          path: app/nxaterm/dist/*.zip
+          if-no-files-found: error

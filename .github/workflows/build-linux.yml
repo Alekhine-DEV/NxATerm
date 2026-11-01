@@ -3,6 +3,8 @@ name: Build NxATerm (Linux)
 on:
   workflow_dispatch:
   workflow_call:
+  push:
+    branches: [ci-builds]
 
 env:
   # Pilha GTK 3 + WebKitGTK 4.1: a mais ampla (Ubuntu 22.04+, Debian 12+, Fedora, openSUSE, Arch).
@@ -10,8 +12,21 @@ env:
 
 jobs:
   build:
-    # Ubuntu 22.04 é a base mais antiga com WebKitGTK 4.1; o executável roda também nas mais novas.
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04     # Ubuntu 22.04 é a base mais antiga com WebKitGTK 4.1; o executável roda também nas mais novas.
+            arch: amd64
+            march: x86_64
+            required: true
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+            march: aarch64
+            required: false
+    runs-on: ${{ matrix.runner }}
+    # o ARM64 é extra: um problema nele não impede a publicação do restante
+    continue-on-error: ${{ !matrix.required }}
     steps:
       - name: Baixar o repositório
         uses: actions/checkout@v4
@@ -52,7 +67,7 @@ jobs:
       - name: Pacotes .deb, .rpm e Arch
         working-directory: app/nxaterm
         env:
-          GOARCH: amd64
+          GOARCH: ${{ matrix.arch }}
         run: |
           export VERSION="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/VERSION")"
           for fmt in deb rpm archlinux; do
@@ -64,7 +79,7 @@ jobs:
         working-directory: app/nxaterm
         run: |
           VERSION="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/VERSION")"
-          T="nxaterm-$VERSION-linux-x86_64"
+          T="nxaterm-$VERSION-linux-${{ matrix.march }}"
           mkdir -p "tar/$T"
           cp bin/nxaterm pkg/nxaterm.png pkg/nxaterm.desktop pkg/install.sh pkg/deps-check.sh "tar/$T/"
           tar -C tar -czf "dist/$T.tar.gz" "$T"
@@ -80,10 +95,10 @@ jobs:
           cp pkg/AppRun "$A/AppRun"
           cp pkg/nxaterm.desktop pkg/nxaterm.png "$A/"
           ln -s nxaterm.png "$A/.DirIcon"
-          wget -q -O appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          wget -q -O appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-${{ matrix.march }}.AppImage
           sha256sum appimagetool
           chmod +x appimagetool
-          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --no-appstream "$A" "dist/NxATerm-$VERSION-x86_64.AppImage"
+          ARCH=${{ matrix.march }} APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --no-appstream "$A" "dist/NxATerm-$VERSION-${{ matrix.march }}.AppImage"
           ls -l dist
 
       - name: Conferir o conteúdo dos pacotes
@@ -110,7 +125,7 @@ jobs:
       - name: Publicar os pacotes
         uses: actions/upload-artifact@v4
         with:
-          name: nxaterm-linux
+          name: nxaterm-linux-${{ matrix.arch }}
           path: |
             app/nxaterm/dist/*
           if-no-files-found: error

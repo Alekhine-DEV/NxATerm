@@ -5,6 +5,7 @@ runs:
   using: composite
   steps:
     - name: Instalar as bibliotecas de compilação
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         sudo apt-get update
@@ -26,7 +27,9 @@ runs:
       run: |
         go version
         node --version
-        go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+        TAGS=""
+        if [ "$RUNNER_OS" = "Linux" ]; then TAGS="-tags gtk3"; fi
+        go install $TAGS github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
         echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
     - name: Criar o projeto base (wails3 init)
@@ -43,7 +46,7 @@ runs:
         printf 'package main\n\n// appVersion vem do arquivo VERSION do repositório.\nconst appVersion = "%s"\n' "$(tr -d '[:space:]' < VERSION)" > app/nxaterm/version.go
         cat app/nxaterm/version.go
         rm -f app/nxaterm/greetservice.go app/nxaterm/frontend/src/main.ts
-        base64 -d app/nxaterm/icon/appicon.png.b64 > app/nxaterm/build/appicon.png
+        base64 --decode < app/nxaterm/icon/appicon.png.b64 > app/nxaterm/build/appicon.png
         rm -rf app/nxaterm/icon
         file app/nxaterm/build/appicon.png
 

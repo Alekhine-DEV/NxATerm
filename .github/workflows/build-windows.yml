@@ -3,10 +3,26 @@ name: Build NxATerm (Windows)
 on:
   workflow_dispatch:
   workflow_call:
+  push:
+    branches: [ci-builds]
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: amd64
+            upper: AMD64
+            required: true
+          - runner: windows-11-arm
+            arch: arm64
+            upper: ARM64
+            required: false
+    runs-on: ${{ matrix.runner }}
+    # o ARM64 é extra: um problema nele não impede a publicação do restante
+    continue-on-error: ${{ !matrix.required }}
     steps:
       - name: Baixar o repositório
         uses: actions/checkout@v4
@@ -114,16 +130,17 @@ jobs:
           makensis /VERSION
           wails3 generate webview2bootstrapper -dir build\windows\nsis
           Push-Location build\windows\nsis
-          makensis -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user "-DARG_WAILS_AMD64_BINARY=$((Resolve-Path ..\..\..\bin\nxaterm.exe).Path)" project.nsi
+          makensis -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user "-DARG_WAILS_${{ matrix.upper }}_BINARY=$((Resolve-Path ..\..\..\bin\nxaterm.exe).Path)" project.nsi
           if ($LASTEXITCODE -ne 0) { throw "makensis falhou ($LASTEXITCODE)" }
           Pop-Location
-          Get-FileHash bin\nxaterm-amd64-installer.exe -Algorithm SHA256
+          Get-FileHash bin\nxaterm-${{ matrix.arch }}-installer.exe -Algorithm SHA256
 
       - name: Testar o instalador (instala, confere e desinstala)
+        if: matrix.arch == 'amd64'
         working-directory: app/nxaterm
         continue-on-error: true
         run: |
-          $inst = (Resolve-Path bin\nxaterm-amd64-installer.exe).Path
+          $inst = (Resolve-Path bin\nxaterm-${{ matrix.arch }}-installer.exe).Path
           $p = Start-Process $inst -ArgumentList '/S' -Wait -PassThru
           "instalador saiu com código $($p.ExitCode)"
           $dir = "$env:LOCALAPPDATA\Programs\NxATerm"
@@ -145,13 +162,13 @@ jobs:
       - name: Publicar o executável
         uses: actions/upload-artifact@v4
         with:
-          name: nxaterm-windows
+          name: nxaterm-windows-${{ matrix.arch }}
           path: app/nxaterm/bin/nxaterm.exe
           if-no-files-found: error
 
       - name: Publicar o instalador
         uses: actions/upload-artifact@v4
         with:
-          name: nxaterm-windows-installer
-          path: app/nxaterm/bin/nxaterm-amd64-installer.exe
+          name: nxaterm-windows-installer-${{ matrix.arch }}
+          path: app/nxaterm/bin/nxaterm-${{ matrix.arch }}-installer.exe
           if-no-files-found: error
