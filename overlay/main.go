@@ -10,6 +10,7 @@ import (
 	"nxaterm/internal/launch"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 //go:embed all:frontend/dist
@@ -69,6 +70,17 @@ func main() {
 		MinHeight:        500,
 		BackgroundColour: application.NewRGB(24, 25, 30),
 		URL:              "/",
+		EnableFileDrop:   true,
+	})
+
+	// arquivos arrastados do sistema para a janela: o frontend decide o que fazer
+	// conforme o elemento (data-file-drop-target) em que foram soltos
+	win.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		target := ""
+		if d := event.Context().DropTargetDetails(); d != nil {
+			target = d.ElementID
+		}
+		svc.emitJSON("files:dropped", map[string]any{"files": event.Context().DroppedFiles(), "target": target})
 	})
 
 	svc.showWindow = func() {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"nxaterm/internal/store"
+	"nxaterm/internal/xfer"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -98,6 +99,15 @@ func (t *termSession) sftpClient() (*sftp.Client, error) {
 	}
 	t.sftp = c
 	return c, nil
+}
+
+// files devolve o sistema de arquivos remoto da aba (SFTP).
+func (t *termSession) files() (xfer.FS, error) {
+	c, err := t.sftpClient()
+	if err != nil {
+		return nil, err
+	}
+	return sftpFS{c: c}, nil
 }
 
 // hostKeyCallback implementa "aceitar na primeira vez" (como o ssh com
@@ -289,6 +299,7 @@ func (a *TermService) Connect(id string, s store.Session, secret string, cols, r
 		}
 		t.close()
 		a.stopTunnelsOf(id)
+		a.stopTransfersOf(id)
 		a.termMu.Lock()
 		delete(a.terms, id)
 		a.termMu.Unlock()
@@ -382,6 +393,7 @@ func (a *TermService) closeAll() {
 		t.close()
 	}
 	a.stopAllTunnels()
+	a.stopAllTransfers()
 }
 
 // dataDir devolve (e cria) a pasta de dados do app.

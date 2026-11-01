@@ -36,6 +36,8 @@ type TermService struct {
 
 	promptMu sync.Mutex
 	prompts  map[string]chan promptAnswer
+
+	xf *xferState
 }
 
 // NewTermService prepara a pasta de dados e carrega as sessões salvas.
@@ -61,6 +63,7 @@ func NewTermService(app *application.App) (*TermService, error) {
 		settingsPath: filepath.Join(dir, "settings.json"),
 		tunnels:      map[string]*tunnel{},
 		prompts:      map[string]chan promptAnswer{},
+		xf:           newXferState(),
 	}, nil
 }
 
