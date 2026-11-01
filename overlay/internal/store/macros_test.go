@@ -49,3 +49,35 @@ func TestMacrosCRUD(t *testing.T) {
 		t.Fatal("delete não funcionou")
 	}
 }
+
+func TestMacroOrderAndPin(t *testing.T) {
+	m, err := OpenMacros(filepath.Join(t.TempDir(), "m.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, n := range []string{"c", "a", "b"} {
+		x, err := m.Save(Macro{Name: n, Command: "ls"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, x.ID)
+	}
+	names := func() string {
+		s := ""
+		for _, x := range m.List() {
+			s += x.Name
+		}
+		return s
+	}
+	if names() != "abc" {
+		t.Fatalf("ordem padrão: %s", names())
+	}
+	if err := m.Reorder([]string{ids[0], ids[2], ids[1]}); err != nil || names() != "cba" {
+		t.Fatalf("reordenar: %s %v", names(), err)
+	}
+	x, _ := m.Save(Macro{ID: ids[1], Name: "a", Command: "ls", Pinned: true, Tags: []string{"web", "Web"}})
+	if names() != "acb" || len(x.Tags) != 1 {
+		t.Fatalf("fixar: %s %v", names(), x.Tags)
+	}
+}

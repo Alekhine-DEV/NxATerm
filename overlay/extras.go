@@ -23,6 +23,18 @@ func (a *TermService) ListMacros() []store.Macro { return a.macros.List() }
 // SaveMacro cria (id vazio) ou atualiza uma macro.
 func (a *TermService) SaveMacro(m store.Macro) (store.Macro, error) { return a.macros.Save(m) }
 
+// ReorderMacros grava a ordem escolhida pelo usuário (IDs na sequência).
+func (a *TermService) ReorderMacros(ids []string) error { return a.macros.Reorder(ids) }
+
+// HasLock diz se existe senha de abertura.
+func (a *TermService) HasLock() bool { return a.lock.Enabled() }
+
+// CheckLock confere a senha de abertura.
+func (a *TermService) CheckLock(pw string) bool { return a.lock.Check(pw) }
+
+// SetLock define, troca ou remove (newPw vazia) a senha de abertura.
+func (a *TermService) SetLock(current, newPw string) error { return a.lock.Set(current, newPw) }
+
 // DeleteMacro apaga uma macro.
 func (a *TermService) DeleteMacro(id string) error { return a.macros.Delete(id) }
 

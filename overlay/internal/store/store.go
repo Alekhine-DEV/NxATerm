@@ -41,6 +41,10 @@ type Session struct {
 	StartupCommand string `json:"startupCommand"` // comando executado logo após conectar
 	Notes          string `json:"notes"`
 
+	// Organização
+	Color string   `json:"color,omitempty"` // #rrggbb: cor da sessão na lista e nas abas
+	Tags  []string `json:"tags,omitempty"`
+
 	// Serial
 	SerialPort string `json:"serialPort"` // ex: COM3 ou /dev/ttyUSB0
 	BaudRate   int    `json:"baudRate"`
@@ -280,7 +284,45 @@ func Normalize(in Session) (Session, error) {
 	if in.Type != TypeSSH {
 		in.X11 = false
 	}
+	in.Color = CleanColor(in.Color)
+	in.Tags = CleanTags(in.Tags)
 	return in, nil
+}
+
+var colorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// CleanColor devolve a cor em minúsculas ou "" se não for #rrggbb.
+func CleanColor(c string) string {
+	c = strings.TrimSpace(c)
+	if !colorRe.MatchString(c) {
+		return ""
+	}
+	return strings.ToLower(c)
+}
+
+// CleanTags tira espaços, repetidas (sem diferenciar maiúsculas) e vazias; no máximo 20 de 32 caracteres.
+func CleanTags(in []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, t := range in {
+		t = strings.TrimSpace(strings.ReplaceAll(strings.TrimPrefix(strings.TrimSpace(t), "#"), ",", " "))
+		if t == "" {
+			continue
+		}
+		if r := []rune(t); len(r) > 32 {
+			t = string(r[:32])
+		}
+		k := strings.ToLower(t)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, t)
+		if len(out) == 20 {
+			break
+		}
+	}
+	return out
 }
 
 var termTypeRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)

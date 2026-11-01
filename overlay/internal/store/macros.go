@@ -17,6 +17,11 @@ type Macro struct {
 	Name    string `json:"name"`
 	Command string `json:"command"`
 	Enter   bool   `json:"enter"` // envia Enter ao final
+
+	Pinned   bool     `json:"pinned,omitempty"`   // aparece primeiro na lista
+	Order    int      `json:"order,omitempty"`    // posição escolhida pelo usuário
+	Sessions []string `json:"sessions,omitempty"` // só aparece nestas sessões (vazio = em todas)
+	Tags     []string `json:"tags,omitempty"`     // ... ou nas sessões com alguma destas tags
 }
 
 // MacroStore guarda as macros em JSON, no mesmo estilo do Store de sessões.
@@ -52,9 +57,33 @@ func (m *MacroStore) List() []Macro {
 	out := make([]Macro, len(m.macros))
 	copy(out, m.macros)
 	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Pinned != out[j].Pinned {
+			return out[i].Pinned
+		}
+		if out[i].Order != out[j].Order {
+			return out[i].Order < out[j].Order
+		}
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out
+}
+
+// Reorder grava a ordem dada (IDs na sequência desejada); o que não estiver na lista vai para o fim.
+func (m *MacroStore) Reorder(ids []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	pos := map[string]int{}
+	for i, id := range ids {
+		pos[id] = i + 1
+	}
+	for i := range m.macros {
+		if p, ok := pos[m.macros[i].ID]; ok {
+			m.macros[i].Order = p
+		} else {
+			m.macros[i].Order = len(ids) + 1
+		}
+	}
+	return m.flush()
 }
 
 // Save cria (ID vazio) ou atualiza uma macro.
@@ -66,6 +95,7 @@ func (m *MacroStore) Save(in Macro) (Macro, error) {
 	if strings.TrimSpace(in.Command) == "" {
 		return Macro{}, errors.New("a macro precisa de um comando")
 	}
+	in.Tags = CleanTags(in.Tags)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if in.ID == "" {

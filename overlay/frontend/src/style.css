@@ -557,3 +557,29 @@ input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid v
 /* ---------- Zmodem ---------- */
 .zm-bar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 12; display: flex; align-items: center; gap: 12px; background: var(--g-2a2a2a); border: 1px solid var(--g-484848); border-radius: 8px; padding: 8px 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); max-width: 80%; }
 .zm-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- organização de sessões ---------- */
+.sd-book { display: flex; flex-direction: column; gap: 14px; }
+.sd-grid-tags { display: grid; grid-template-columns: 1fr 140px; gap: 16px; align-items: end; }
+.color-row { display: flex; align-items: center; gap: 8px; height: 30px; }
+.color-row .check { margin: 0 !important; display: flex; align-items: center; gap: 6px; }
+.sess[data-color] { box-shadow: inset 3px 0 0 var(--sc); }
+.tab[data-color] { box-shadow: inset 0 -3px 0 var(--sc); }
+.tab.active[data-color] { box-shadow: inset 0 2px 0 var(--accent), inset 0 -3px 0 var(--sc); }
+
+.org-list { max-height: 360px; overflow-y: auto; margin: 4px -6px; }
+.org-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 5px; cursor: pointer; }
+.org-row:hover { background: var(--g-2a2a2a); }
+.org-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-sub { color: var(--muted); font-size: 12px; white-space: nowrap; }
+#lock-screen { position: fixed; inset: 0; z-index: 99999; background: var(--bg); display: flex; align-items: center; justify-content: center; }
+.lock-box { width: 300px; display: flex; flex-direction: column; gap: 12px; }
+.lock-box input { width: 100%; }
+.lock-err { color: var(--danger); min-height: 16px; font-size: 12px; }
+.macro-head { display: flex; gap: 2px; padding: 4px 4px 6px; }
+.macro-head .seg { flex: 1; padding: 3px 4px; font-size: 12px; background: transparent; border-color: var(--border); }
+.macro-head .seg.on { background: var(--raise); border-color: var(--accent); }
+.macro.drop { box-shadow: inset 0 2px 0 var(--accent); }
+.macro .mini.on { color: var(--accent); }
+.macro-sess { max-height: 130px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
+.macro-sess label.check { margin: 4px 0; }

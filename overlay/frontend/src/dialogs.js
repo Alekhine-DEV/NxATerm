@@ -15,7 +15,7 @@ export function editSession(existing, onChange, preset) {
     type: 'ssh', name: '', folder: '', host: '', port: 0, user: '', authMethod: 'password', keyPath: '',
     startupCommand: '', notes: '', serialPort: '', baudRate: 9600, dataBits: 8, parity: 'none', stopBits: '1',
     shell: '', distro: '', proxy: '', proxyCommand: '', jumpHost: '', encoding: '', termType: '',
-    startDir: '', env: '', x11: false, ftpSecurity: '', ftpInsecure: false, ...(existing || preset || {}),
+    startDir: '', env: '', x11: false, ftpSecurity: '', ftpInsecure: false, color: '', tags: [], ...(existing || preset || {}),
   }
   let type = typeOf(s)
 
@@ -23,6 +23,8 @@ export function editSession(existing, onChange, preset) {
   const f = {
     name: h('input', { type: 'text', value: s.name, placeholder: 'Automático' }),
     folder: h('input', { type: 'text', value: s.folder, placeholder: 'Sem pasta' }),
+    tags: h('input', { type: 'text', value: (s.tags || []).join(', '), placeholder: 'Sem tags', spellcheck: 'false' }),
+    notes: h('textarea', { rows: 2, spellcheck: 'false', placeholder: 'Sem descrição' }, s.notes || ''),
     host: h('input', { type: 'text', value: s.host, spellcheck: 'false' }),
     port: h('input', { type: 'number', value: s.port || TYPE_INFO[type].defPort || '', min: 1, max: 65535 }),
     user: h('input', { type: 'text', value: s.user, spellcheck: 'false' }),
@@ -93,7 +95,8 @@ export function editSession(existing, onChange, preset) {
       await Api.SaveSession({
         id: s.id || '', type, name: f.name.value, folder: f.folder.value, host: f.host.value,
         port: parseInt(f.port.value, 10) || 0, user: f.user.value, authMethod: f.auth.value,
-        keyPath: f.keyPath.value, startupCommand: f.startup.value, notes: s.notes || '',
+        keyPath: f.keyPath.value, startupCommand: f.startup.value, notes: f.notes.value.trim(),
+        color: colorOn.checked ? colorIn.value : '', tags: f.tags.value.split(/[,;]/).map((x) => x.trim()).filter(Boolean),
         proxy: f.proxySel.value === 'custom' ? f.proxy.value : f.proxySel.value, jumpHost: f.jump.value,
         proxyCommand: f.proxyCmd.value, encoding: f.encoding.value, termType: f.termType.value,
         startDir: f.startDir.value, env: f.env.value, x11: f.x11.checked,
@@ -119,7 +122,14 @@ export function editSession(existing, onChange, preset) {
   const startup = () => fld('Comandos ao conectar', f.startup)
   const sep = () => h('div', { class: 'sd-sep' })
   // nome e pasta ficam no fim de qualquer tipo: é tudo o que "favorito" precisava ter
-  const book = () => grid('sd-grid-eq', ['Nome', f.name], ['Pasta', f.folder])
+  const colorIn = h('input', { type: 'color', value: s.color || '#2d7ad6' })
+  const colorOn = h('input', { type: 'checkbox', checked: !!s.color })
+  colorIn.addEventListener('input', () => { colorOn.checked = true })
+  const colorRow = h('div', { class: 'color-row' }, h('label', { class: 'check' }, colorOn, ' Cor'), colorIn)
+  const book = () => h('div', { class: 'sd-book' },
+    grid('sd-grid-eq', ['Nome', f.name], ['Pasta', f.folder]),
+    h('div', { class: 'sd-grid-tags' }, fld('Tags', f.tags), colorRow),
+    fld('Descrição', f.notes))
   const authRow = () => h('div', { class: 'sd-grid-eq' }, h('div', {}, h('label', {}, 'Autenticação'), f.auth), keyRow)
 
   // opções menos usadas ficam recolhidas, no mesmo painel
@@ -213,9 +223,23 @@ export function editMacro(existing, onChange) {
   const name = h('input', { type: 'text', value: m.name })
   const cmd = h('textarea', { rows: 5, spellcheck: 'false' }, m.command)
   const enter = h('input', { type: 'checkbox', checked: m.enter !== false })
+  const pinned = h('input', { type: 'checkbox', checked: !!m.pinned })
+  const tags = h('input', { type: 'text', value: (m.tags || []).join(', '), placeholder: 'Todas as sessões', spellcheck: 'false' })
+  const picked = new Set(m.sessions || [])
+  const sessBox = h('div', { class: 'macro-sess' }, h('div', { class: 'sftp-msg' }, '...'))
+  Api.ListSessions().then((list) => {
+    sessBox.replaceChildren(...list.map((x) => {
+      const c = h('input', { type: 'checkbox', checked: picked.has(x.id) })
+      c.addEventListener('change', () => { c.checked ? picked.add(x.id) : picked.delete(x.id) })
+      return h('label', { class: 'check' }, c, ' ' + x.name)
+    }))
+  }).catch(() => {})
   const save = async () => {
     try {
-      await Api.SaveMacro({ id: m.id || '', name: name.value, command: cmd.value, enter: enter.checked })
+      await Api.SaveMacro({
+        id: m.id || '', name: name.value, command: cmd.value, enter: enter.checked, pinned: pinned.checked, order: m.order || 0,
+        sessions: [...picked], tags: tags.value.split(/[,;]/).map((x) => x.trim()).filter(Boolean),
+      })
       closeModal()
       onChange()
     } catch (e) { toast(cleanErr(e), true) }
@@ -228,6 +252,10 @@ export function editMacro(existing, onChange) {
     h('h2', {}, existing ? 'Editar macro' : 'Nova macro'),
     field('Nome', name), field('Comandos', cmd),
     h('label', { class: 'check' }, enter, ' Enviar Enter no final (executa o comando)'),
+    h('label', { class: 'check' }, pinned, ' Fixar no topo da lista'),
+    h('h3', {}, 'Aparece em'),
+    field('Tags das sessões', tags),
+    field('Sessões', sessBox),
     h('div', { class: 'btns' },
       existing ? h('button', { class: 'danger', onclick: remove }, 'Excluir') : null,
       h('span', { class: 'spacer' }),

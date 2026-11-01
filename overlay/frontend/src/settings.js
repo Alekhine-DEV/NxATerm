@@ -47,6 +47,9 @@ export const DEFAULTS = {
   uiOpacity: 0.9, // opacidade da interface com a janela transparente
   unicode11: true, // largura correta de emojis e caracteres largos
   webgl: false, // renderizador acelerado por GPU
+  macroScope: 'all', // lista de macros: 'all' ou 'active' (só as da sessão ativa)
+  history: [], // conexões recentes: [{ at, s: sessão }]
+  workspaces: {}, // espaços de trabalho: { nome: { items: [sessão], layout } }
   zmodem: true, // transferências rz/sz pelo terminal
   inlineImages: true, // mostra imagens no terminal (sixel e protocolo do iTerm2)
   highlight: { enabled: false, rules: [] }, // realce de palavras: rules = [{ pattern, color, regex }]
@@ -75,6 +78,13 @@ export async function loadSettings() {
   settings.uiOpacity = clampF(settings.uiOpacity, 0.4, 1, DEFAULTS.uiOpacity)
   for (const k of ['windowTransparent', 'webgl']) settings[k] = !!settings[k]
   for (const k of ['unicode11', 'inlineImages', 'zmodem']) settings[k] = settings[k] !== false
+  if (!['all', 'active'].includes(settings.macroScope)) settings.macroScope = 'all'
+  settings.history = Array.isArray(settings.history)
+    ? settings.history.filter((e) => e && typeof e.at === 'number' && e.s && typeof e.s === 'object').slice(0, 50) : []
+  if (!settings.workspaces || typeof settings.workspaces !== 'object' || Array.isArray(settings.workspaces)) settings.workspaces = {}
+  for (const [k, w] of Object.entries(settings.workspaces)) {
+    if (!w || !Array.isArray(w.items)) delete settings.workspaces[k]
+  }
   const hl = settings.highlight
   settings.highlight = {
     enabled: !!(hl && hl.enabled),

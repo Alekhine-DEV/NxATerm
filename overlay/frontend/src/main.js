@@ -18,6 +18,7 @@ import { editSession, editMacro, tunnelDialog, keygenDialog, aboutDialog, shortc
 import { keyOf, actionFor, capture } from './keys.js'
 import { memo, memoKey } from './memo.js'
 import { settingsDialog } from './settingsdlg.js'
+import { recordHistory, historyDialog, workspaceDialog, lockGate } from './organize.js'
 import { applyAppearance, setBackgroundData, setStartupTransparent } from './uitheme.js'
 import { initConnect } from './connect.js'
 import { attachHighlight } from './highlight.js'
@@ -94,10 +95,14 @@ const MENUS = {
     { label: 'Buscar no terminal', kbd: keyOf('search'), disabled: !activeTab() || !activeTab().term, onclick: () => toggleSearch(activeTab()) },
     { label: 'Limpar tela', disabled: !activeTab() || !activeTab().term, onclick: () => activeTab().term.clear() },
     { sep: true },
+    { label: 'Bloquear', icon: 'lock', onclick: lockNow },
     { label: 'Sair', icon: 'power', onclick: () => Api.Quit() },
   ],
   Sessões: () => [
     ...treeMenu(''),
+    { sep: true },
+    { label: 'Histórico de conexões...', icon: 'refresh', onclick: () => historyDialog(openSession) },
+    { label: 'Espaços de trabalho...', icon: 'split', onclick: openWorkspaces },
     { sep: true },
     { label: 'Mostrar a lista de sessões', icon: 'star', onclick: () => showSide('sessions') },
   ],
@@ -116,12 +121,15 @@ const MENUS = {
     { label: 'Gerador de chaves SSH...', icon: 'key', onclick: keygenDialog },
   ],
   Macros: () => [
-    ...(macros.length
-      ? macros.map((m) => ({ label: m.name, icon: 'play', onclick: () => runMacro(m, false) }))
+    ...(visibleMacros('active').length
+      ? visibleMacros('active').map((m) => ({ label: (m.pinned ? '★ ' : '') + m.name, icon: 'play', onclick: () => runMacro(m, false) }))
       : [{ label: '(nenhuma macro)', disabled: true }]),
     { sep: true },
     { label: 'Nova macro...', icon: 'plus', onclick: () => editMacro(null, refreshMacros) },
     { label: 'Gerenciar macros', icon: 'send', onclick: () => showSide('macros') },
+    { sep: true },
+    { label: 'Exportar macros...', icon: 'download', onclick: exportMacros },
+    { label: 'Importar macros...', icon: 'upload', onclick: importMacros },
   ],
   Configurações: () => [
     { label: 'Configurações...', kbd: keyOf('settings'), icon: 'gear', onclick: openSettings },
@@ -299,8 +307,13 @@ function buildFolderTree(list, extraFolders = []) {
 function renderTree() {
   const raw = $('quick').value.trim()
   const q = raw.toLowerCase()
-  const list = sessions.filter((s) =>
-    !q || [s.name, s.host, s.user, s.folder, sessionSummary(s), TYPE_INFO[typeOf(s)].label].some((x) => (x || '').toLowerCase().includes(q)))
+  // "#tag" filtra pelas tags da sessão; o resto do texto continua valendo como busca comum
+  const tagQ = q.startsWith('#') ? q.slice(1) : null
+  const list = sessions.filter((s) => {
+    if (!q) return true
+    if (tagQ !== null) return (s.tags || []).some((t) => t.toLowerCase().includes(tagQ))
+    return [s.name, s.host, s.user, s.folder, s.notes, ...(s.tags || []), sessionSummary(s), TYPE_INFO[typeOf(s)].label].some((x) => (x || '').toLowerCase().includes(q))
+  })
 
   const root = buildFolderTree(list, q ? [] : folders)
   const tree = $('tree')
@@ -542,10 +555,12 @@ function sessionRow(s) {
   const row = h('div', { class: 'sess', draggable: 'true', ondblclick: () => { hideTip(); openSession(s) } },
     h('span', { class: 'sess-ico' + (online ? ' on' : ''), style: `color:${info.color}` }, icon(info.icon, 15)),
     h('span', { class: 'name' }, s.name))
+  if (s.color) { row.dataset.color = s.color; row.style.setProperty('--sc', s.color) }
   attachTip(row, () => [
     h('div', { class: 'tip-title' }, s.name),
     h('div', { class: 'tip-line' }, info.label + ' · ' + sessionSummary(s)),
     s.folder ? h('div', { class: 'tip-dim' }, s.folder.replace(/\//g, ' › ')) : null,
+    (s.tags || []).length ? h('div', { class: 'tip-dim' }, s.tags.map((t) => '#' + t).join('  ')) : null,
     s.notes ? h('div', { class: 'tip-dim' }, s.notes) : null,
   ])
   row.addEventListener('dragstart', (e) => { dragSession = s; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', s.id) })
@@ -572,17 +587,91 @@ function sessionRow(s) {
 }
 
 // ------------------------------------------------------------------ painel: macros e ferramentas
+/** A macro vale para esta sessão? Sem vínculo, vale para todas. */
+function macroApplies(m, sess) {
+  const ids = m.sessions || []
+  const tg = (m.tags || []).map((t) => t.toLowerCase())
+  if (!ids.length && !tg.length) return true
+  if (!sess) return false
+  if (ids.includes(sess.id)) return true
+  return (sess.tags || []).some((t) => tg.includes(t.toLowerCase()))
+}
+
+function visibleMacros(scope = settings.macroScope) {
+  if (scope === 'all') return macros
+  const t = activeTab()
+  return macros.filter((m) => macroApplies(m, t ? t.session : null))
+}
+
 function renderMacros() {
   const box = $('macro-list')
-  if (!macros.length) {
-    box.replaceChildren(h('div', { class: 'sftp-msg' }, 'Nenhuma macro'))
+  const scope = settings.macroScope
+  const list = visibleMacros()
+  const seg = (id, label) => h('button', {
+    class: 'seg' + (scope === id ? ' on' : ''),
+    onclick: () => { settings.macroScope = id; saveSettings(); renderMacros() },
+  }, label)
+  const head = h('div', { class: 'macro-head' }, seg('active', 'Da sessão ativa'), seg('all', 'Todas'))
+  if (!list.length) {
+    box.replaceChildren(head, h('div', { class: 'sftp-msg' }, macros.length ? 'Nenhuma macro para esta sessão' : 'Nenhuma macro'))
     return
   }
-  box.replaceChildren(...macros.map((m) => h('div', { class: 'macro', title: m.command },
-    h('span', { class: 'name' }, m.name),
-    h('button', { class: 'mini', title: 'Executar na aba ativa', onclick: () => runMacro(m, false) }, icon('play', 13)),
-    h('button', { class: 'mini', title: 'Executar em todas as abas abertas', onclick: () => runMacro(m, true) }, icon('playall', 13)),
-    h('button', { class: 'mini', title: 'Editar', onclick: () => editMacro(m, refreshMacros) }, icon('pencil', 13)))))
+  let dragId = null
+  const rows = list.map((m) => {
+    const row = h('div', { class: 'macro', title: m.command, draggable: scope === 'all' ? 'true' : 'false' },
+      h('span', { class: 'name' }, m.name),
+      h('button', {
+        class: 'mini' + (m.pinned ? ' on' : ''), title: m.pinned ? 'Desafixar' : 'Fixar no topo',
+        onclick: async () => {
+          try { await Api.SaveMacro({ ...m, pinned: !m.pinned }); refreshMacros() } catch (e) { toast(cleanErr(e), true) }
+        },
+      }, icon('pin', 13)),
+      h('button', { class: 'mini', title: 'Executar na aba ativa', onclick: () => runMacro(m, false) }, icon('play', 13)),
+      h('button', { class: 'mini', title: 'Executar em todas as abas abertas', onclick: () => runMacro(m, true) }, icon('playall', 13)),
+      h('button', { class: 'mini', title: 'Editar', onclick: () => editMacro(m, refreshMacros) }, icon('pencil', 13)))
+    if (scope === 'all') {
+      row.addEventListener('dragstart', (e) => { dragId = m.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', m.id) })
+      row.addEventListener('dragover', (e) => { if (dragId && dragId !== m.id) { e.preventDefault(); row.classList.add('drop') } })
+      row.addEventListener('dragleave', () => row.classList.remove('drop'))
+      row.addEventListener('drop', async (e) => {
+        e.preventDefault()
+        row.classList.remove('drop')
+        if (!dragId || dragId === m.id) return
+        const ids = macros.map((x) => x.id).filter((x) => x !== dragId)
+        ids.splice(ids.indexOf(m.id), 0, dragId)
+        dragId = null
+        try { await Api.ReorderMacros(ids); refreshMacros() } catch (err) { toast(cleanErr(err), true) }
+      })
+    }
+    return row
+  })
+  box.replaceChildren(head, ...rows)
+}
+
+async function exportMacros() {
+  if (!macros.length) { toast('Não há macros para exportar.', true); return }
+  try {
+    const data = macros.map(({ name, command, enter, pinned, tags }) => ({ name, command, enter, pinned: !!pinned, tags: tags || [] }))
+    const p = await Api.ExportText('nxaterm-macros.json', JSON.stringify(data, null, 2))
+    if (p) toast('Macros exportadas')
+  } catch (e) { toast(cleanErr(e), true) }
+}
+
+async function importMacros() {
+  try {
+    const f = await Api.ImportText('Escolha o arquivo de macros')
+    if (!f || !f.name) return
+    const arr = JSON.parse(f.content)
+    if (!Array.isArray(arr)) throw new Error('arquivo de macros inválido')
+    let n = 0
+    for (const m of arr) {
+      if (!m || typeof m.name !== 'string' || typeof m.command !== 'string') continue
+      await Api.SaveMacro({ id: '', name: m.name, command: m.command, enter: m.enter !== false, pinned: !!m.pinned, tags: Array.isArray(m.tags) ? m.tags : [] })
+      n++
+    }
+    await refreshMacros()
+    toast(`${n} macro${n === 1 ? '' : 's'} importada${n === 1 ? '' : 's'}`)
+  } catch (e) { toast(cleanErr(e), true) }
 }
 
 function runMacro(m, everywhere) {
@@ -591,6 +680,30 @@ function runMacro(m, everywhere) {
   const text = m.command.replace(/\r?\n/g, '\r') + (m.enter ? '\r' : '')
   for (const t of targets) Api.Write(t.id, text).catch(() => {})
   toast(`Macro "${m.name}" enviada para ${targets.length} aba(s)`)
+}
+
+// ------------------------------------------------------------------ espaços de trabalho e bloqueio
+function openWorkspaces() {
+  workspaceDialog(
+    () => ({
+      items: allTabs().filter((t) => t.session && t.kind !== 'home').map((t) => ({ ...t.session })),
+      layout,
+    }),
+    async (w) => {
+      if (w.layout && LAYOUTS[w.layout]) setLayout(w.layout)
+      for (const item of w.items) {
+        // sessão salva: usa a versão atual (a senha nunca é guardada)
+        const cur = item.id ? sessions.find((x) => x.id === item.id) : null
+        await openSession(cur || item)
+      }
+    })
+}
+
+async function lockNow() {
+  let has = false
+  try { has = await Api.HasLock() } catch { /* sem bloqueio */ }
+  if (!has) { toast('Defina uma senha de abertura em Configurações > Sistema', true); return }
+  await lockGate()
 }
 
 // ------------------------------------------------------------------ início
@@ -651,6 +764,7 @@ async function openSession(s) {
   try {
     await startTab(s, secret)
     if (save) memo.set(save, secret)
+    recordHistory(s)
     rememberRecent(s)
   } catch (e) {
     const msg = String(e)
@@ -730,6 +844,7 @@ async function startTab(s, secret) {
     h('span', { class: 'tab-ico', style: `color:${TYPE_INFO[kind].color}` }, icon(TYPE_INFO[kind].tabIcon, 14)),
     h('span', { class: 'label' }, label),
     h('span', { class: 'x', title: 'Fechar aba', onclick: (e) => { e.stopPropagation(); closeTab(id) } }, '×'))
+  if (s.color) { tabEl.dataset.color = s.color; tabEl.style.setProperty('--sc', s.color) }
   tabEl.addEventListener('mousedown', (e) => { if (e.button === 1) { e.preventDefault(); closeTab(id) } })
   tabEl.addEventListener('contextmenu', (e) => {
     e.preventDefault()
@@ -943,6 +1058,7 @@ function activate(id) {
   renderSide()
   renderStatus()
   renderMultiexec()
+  if (settings.macroScope === 'active') renderMacros()
   if (t) {
     if (t.kind === 'ssh' && settings.followFolder && !t.followInstalled && !t.dead) installFollow(t)
     pollStats()
@@ -1262,6 +1378,7 @@ async function init() {
   await loadSettings()
   setStartupTransparent(settings.windowTransparent)
   applyAppearance()
+  await lockGate()
   if (settings.hasBg) Api.GetBackground().then((d) => setBackgroundData(d)).catch(() => {})
   $('workspace').style.setProperty('--sidew', settings.sidebarWidth + 'px')
   $('statusbar').classList.toggle('hidden', !settings.showStatusBar)

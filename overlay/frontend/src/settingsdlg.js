@@ -5,6 +5,7 @@ import { settings, saveSettings, FONTS, allTermThemes } from './settings.js'
 import {
   BUILTIN_THEMES, ANSI_KEYS, THEME_KEYS, cleanTheme, themeFromITerm, themeFromJSON, themeToJSON,
 } from './termthemes.js'
+import { lockDialog } from './organize.js'
 import {
   UI_BUILTIN, uiThemes, applyAppearance, previewUiTheme, setBackgroundData, hasBackground,
 } from './uitheme.js'
@@ -249,6 +250,8 @@ function show(st) {
   // ---- Sistema
   panes.sys = [
     check('multiInstance', 'Permitir várias janelas do NxATerm'),
+    h('div', { class: 'set-actions' },
+      h('button', { onclick: () => lockDialog(() => show(st)) }, 'Senha de abertura...')),
     h('div', { class: 'set-actions' },
       h('button', {
         onclick: async () => {

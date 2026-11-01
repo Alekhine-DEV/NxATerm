@@ -490,3 +490,20 @@ func TestNormalizeFTP(t *testing.T) {
 		t.Fatal("campos de FTP não valem para SSH")
 	}
 }
+
+func TestColorAndTags(t *testing.T) {
+	s, err := Normalize(Session{Host: "h", User: "u", Color: " #FF8800 ", Tags: []string{" #prod ", "Prod", "web,db", "", "a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Color != "#ff8800" {
+		t.Errorf("cor = %q", s.Color)
+	}
+	if len(s.Tags) != 3 || s.Tags[0] != "prod" || s.Tags[1] != "web db" || s.Tags[2] != "a" {
+		t.Errorf("tags = %q", s.Tags)
+	}
+	s, _ = Normalize(Session{Host: "h", User: "u", Color: "vermelho"})
+	if s.Color != "" {
+		t.Errorf("cor inválida ficou: %q", s.Color)
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"nxaterm/internal/applock"
 	"nxaterm/internal/netx"
 	"nxaterm/internal/store"
 
@@ -37,7 +38,8 @@ type TermService struct {
 	promptMu sync.Mutex
 	prompts  map[string]chan promptAnswer
 
-	xf *xferState
+	xf   *xferState
+	lock *applock.Lock
 }
 
 // NewTermService prepara a pasta de dados e carrega as sessões salvas.
@@ -54,7 +56,12 @@ func NewTermService(app *application.App) (*TermService, error) {
 	if err != nil {
 		return nil, err
 	}
+	lk, err := applock.Open(filepath.Join(dir, "lock.json"))
+	if err != nil {
+		return nil, err
+	}
 	return &TermService{
+		lock:         lk,
 		app:          app,
 		store:        st,
 		knownHosts:   filepath.Join(dir, "known_hosts"),
