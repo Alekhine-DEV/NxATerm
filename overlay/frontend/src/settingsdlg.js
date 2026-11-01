@@ -6,6 +6,7 @@ import {
   BUILTIN_THEMES, ANSI_KEYS, THEME_KEYS, cleanTheme, themeFromITerm, themeFromJSON, themeToJSON,
 } from './termthemes.js'
 import { lockDialog } from './organize.js'
+import { LANGS, setLang } from './i18n.js'
 import { isWindows } from './sessiontypes.js'
 import {
   UI_BUILTIN, uiThemes, applyAppearance, previewUiTheme, setBackgroundData, hasBackground,
@@ -13,7 +14,7 @@ import {
 
 const KEYS = [
   'font', 'fontSize', 'theme', 'cursorStyle', 'cursorBlink', 'scrollback', 'copyOnSelect', 'rightClick',
-  'autoSftp', 'monitoring', 'followFolder', 'termSync', 'proxy', 'editor', 'multiInstance', 'tray', 'closeToTray', 'globalHotkey', 'checkUpdates',
+  'autoSftp', 'monitoring', 'followFolder', 'termSync', 'proxy', 'editor', 'multiInstance', 'tray', 'closeToTray', 'globalHotkey', 'checkUpdates', 'lang',
   'uiTheme', 'uiThemes', 'customThemes', 'customCss', 'bgOpacity', 'bgBlur', 'termOpacity',
   'windowTransparent', 'uiOpacity', 'unicode11', 'webgl', 'inlineImages', 'zmodem', 'highlight',
 ]
@@ -250,6 +251,7 @@ function show(st) {
 
   // ---- Sistema
   panes.sys = [
+    field('Idioma', sel('lang', [['auto', 'Automático'], ...Object.entries(LANGS)])),
     check('multiInstance', 'Permitir várias janelas do NxATerm'),
     check('tray', 'Ícone na bandeja do sistema (ao reabrir o app)'),
     check('closeToTray', 'Fechar a janela envia para a bandeja (ao reabrir o app)'),
@@ -292,6 +294,7 @@ function show(st) {
           saveSettings()
           if (hotkeyChanged) Api.SetGlobalHotkey(settings.globalHotkey).catch((e) => toast(cleanErr(e), true))
           applyAppearance()
+          setLang(settings.lang)
           closeModal()
           st.onApply()
         },

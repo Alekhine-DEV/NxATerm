@@ -25,6 +25,7 @@ import { attachHighlight } from './highlight.js'
 import { createZmodem } from './zmodemfx.js'
 import { batchDialog } from './batch.js'
 import { syncDialog, syncOnOpen } from './sync.js'
+import { setLang } from './i18n.js'
 import { checkUpdates } from './updates.js'
 import { initFiles, renderSide, buildFileTab } from './files.js'
 import { TYPE_INFO, typeOf, hasFiles, hasSSH, hasTerminal, sessionSummary, isWindows } from './sessiontypes.js'
@@ -1390,6 +1391,7 @@ function initEvents() {
 
 async function init() {
   await loadSettings()
+  setLang(settings.lang)
   setStartupTransparent(settings.windowTransparent)
   applyAppearance()
   await lockGate()

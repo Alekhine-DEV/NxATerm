@@ -57,6 +57,7 @@ export const DEFAULTS = {
   workspaces: {}, // espaços de trabalho: { nome: { items: [sessão], layout } }
   zmodem: true, // transferências rz/sz pelo terminal
   inlineImages: true, // mostra imagens no terminal (sixel e protocolo do iTerm2)
+  lang: 'auto', // idioma da interface: auto | pt | en | es
   sync: { provider: 'gist', gistId: '', url: '', user: '', encrypt: false, remember: false, onOpen: false, withSettings: true }, // destino da sincronização (sem segredos)
   highlight: { enabled: false, rules: [] }, // realce de palavras: rules = [{ pattern, color, regex }]
 }
@@ -106,6 +107,7 @@ export function normalizeSettings() {
           .map((r) => ({ pattern: r.pattern.slice(0, 200), color: normHex(r.color), regex: !!r.regex }))
       : [],
   }
+  if (!['auto', 'pt', 'en', 'es'].includes(settings.lang)) settings.lang = 'auto'
   const sy = settings.sync && typeof settings.sync === 'object' && !Array.isArray(settings.sync) ? settings.sync : {}
   settings.sync = {
     provider: ['gist', 'webdav', 'custom'].includes(sy.provider) ? sy.provider : 'gist',
