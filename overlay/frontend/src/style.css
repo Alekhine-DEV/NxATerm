@@ -654,3 +654,55 @@ input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid v
 .vnc-bar { position: absolute; top: 8px; right: 18px; display: flex; gap: 6px; opacity: 0; transition: opacity .15s; z-index: 5; }
 .pane.vnc:hover .vnc-bar, .vnc-bar:focus-within { opacity: .95; }
 .vnc-bar .mini-t { background: var(--chrome-2); border: 1px solid var(--border); }
+
+/* ---------- janela de túneis SSH ---------- */
+.modal.tnwin { width: 1040px; }
+.tn-ttl { display: flex; align-items: center; gap: 6px; }
+.tn-welcome { text-align: center; padding: 16px 0 14px; font-size: 14px; }
+.tn-table { margin: 0 14px; border: 2px solid var(--g-5a5a5a); min-height: 320px; display: flex; flex-direction: column; background: var(--g-141414); }
+.tn-row { display: grid; grid-template-columns: minmax(120px, 1.3fr) 112px 100px 70px minmax(130px, 1.5fr) minmax(150px, 1.6fr) 90px 84px; align-items: stretch; }
+.tn-row.head { border-bottom: 2px solid var(--g-5a5a5a); background: var(--g-161616); }
+.tn-c { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 6px 8px; border-right: 1px solid var(--g-4a4a4a); text-align: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tn-c:last-child { border-right: none; }
+.tn-row.head .tn-c { padding: 9px 8px; font-size: 12px; }
+.tn-body { flex: 1; overflow-y: auto; max-height: 380px; }
+.tn-body .tn-row { border-bottom: 1px solid var(--g-2c2c2c); }
+.tn-body .tn-row:hover { background: var(--g-1a1a1a); }
+.tn-c.name { justify-content: flex-start; gap: 8px; }
+.tn-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--g-4a4a4a); }
+.tn-row.on .tn-dot { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.tn-run { display: flex; align-items: center; justify-content: center; width: 34px; height: 26px; padding: 0; color: var(--ok); background: var(--g-262626); border-color: var(--g-4a4a4a); }
+.tn-run.on { color: var(--danger); }
+.tn-run:disabled { color: var(--muted); }
+.tn-c .ib:disabled { opacity: .3; pointer-events: none; }
+.tn-foot { padding: 16px 14px 14px; }
+.tn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 7px 14px; background: var(--g-262626); border-color: var(--g-4a4a4a); }
+.tn-btn:disabled { opacity: .45; }
+.tn-btn .ico { color: var(--accent); }
+
+.modal.tnedit { width: 840px; }
+.tn-edit { padding: 14px 18px 0; }
+.tn-kinds { display: flex; justify-content: space-between; gap: 6px; border: 1px solid var(--g-5a5a5a); border-radius: 3px; padding: 11px 8px; }
+.modal .tn-kind { display: flex !important; align-items: center; gap: 6px; margin: 0 !important; color: var(--text) !important; font-size: 12px !important; cursor: pointer; white-space: nowrap !important; }
+.tn-kind input { width: auto; }
+.tn-stagewrap { margin-top: 12px; border: 1px solid var(--g-5a5a5a); border-radius: 3px; overflow: auto; background: var(--g-161616); }
+.tn-stage { position: relative; width: 780px; height: 440px; margin: 0 auto; }
+.tn-stage > * { position: absolute; }
+.tn-art svg { width: 100%; height: 100%; display: block; }
+.tn-lbl { text-align: center; font-size: 12px; white-space: nowrap; }
+.tn-lbl.strong { font-weight: 600; }
+.tn-caption { text-align: center; font-size: 13px; }
+.tn-vline { background: var(--g-5a5a5a); }
+.tn-box { background: var(--g-262626); border-radius: 2px; }
+.tn-arrow { color: var(--accent); font-size: 11px; line-height: 1; }
+.tn-in { height: 24px; padding: 2px 6px; font-size: 12px; background: var(--g-111111); }
+select.tn-in { padding: 2px 4px; }
+.tn-pick { display: flex; align-items: center; justify-content: center; width: 24px; height: 22px; padding: 0; background: transparent; border: none; color: var(--muted); }
+.tn-tube { display: flex; align-items: center; justify-content: center; border-radius: 3px; font-size: 10px; letter-spacing: .3px; color: #fff;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .22) 0 8px, transparent 8px 22px), linear-gradient(#5d6b79, #38424c); background-size: 22px 100%, 100% 100%; }
+.tn-tube.local { animation: tnflow 1s linear infinite; }
+.tn-tube.remote { animation: tnflow 1s linear infinite reverse; }
+@keyframes tnflow { to { background-position: 22px 0, 0 0; } }
+.tn-name { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
+.tn-name label { margin: 0; }
+.tn-name input { width: 280px; }

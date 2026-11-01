@@ -211,4 +211,54 @@ a tecla "{0}" não existe no teclado atual¦the key "{0}" does not exist on the 
 o atalho "{0}" já está em uso por outro programa ({1})¦the shortcut "{0}" is already in use by another program ({1})¦el atajo "{0}" ya está en uso por otro programa ({1})
 o macOS recusou o atalho "{0}" (já está em uso?): código {1}¦macOS refused the shortcut "{0}" (is it already in use?): code {1}¦macOS rechazó el atajo "{0}" (¿ya está en uso?): código {1}
 o atalho global não está disponível neste sistema¦the global shortcut is not available on this system¦el atajo global no está disponible en este sistema
+Editar túnel SSH¦Edit SSH tunnel¦Editar túnel SSH
+Novo túnel SSH¦New SSH tunnel¦Nuevo túnel SSH
+Iniciar todos¦Start all¦Iniciar todos
+Parar todos¦Stop all¦Detener todos
+Gerenciador gráfico de túneis SSH¦Graphical SSH tunnel manager¦Gestor gráfico de túneles SSH
+Iniciar/parar¦Start/stop¦Iniciar/detener
+Servidor de destino¦Destination server¦Servidor de destino
+Ordem¦Order¦Orden
+Subir¦Move up¦Subir
+Descer¦Move down¦Bajar
+Iniciar¦Start¦Iniciar
+Dinâmico (SOCKS)¦Dynamic (SOCKS)¦Dinámico (SOCKS)
+Excluir túnel¦Delete tunnel¦Eliminar túnel
+Excluir o túnel "{0}"?¦Delete the tunnel "{0}"?¦¿Eliminar el túnel "{0}"?
+Túnel "{0}" desconectado¦Tunnel "{0}" disconnected¦Túnel "{0}" desconectado
+Túnel parado: inicie de novo para aplicar as mudanças¦Tunnel stopped: start it again to apply the changes¦Túnel detenido: inícielo de nuevo para aplicar los cambios
+Senha de {0}¦Password for {0}¦Contraseña de {0}
+Senha recusada¦Password rejected¦Contraseña rechazada
+Redirecionamento de porta local¦Local port forwarding¦Redirección de puerto local
+Redirecionamento de porta remota¦Remote port forwarding¦Redirección de puerto remoto
+Redirecionamento dinâmico de porta (proxy SOCKS)¦Dynamic port forwarding (SOCKS proxy)¦Redirección dinámica de puertos (proxy SOCKS)
+Conexão de aplicativos locais para o servidor remoto¦Connection from local applications to the remote server¦Conexión de aplicaciones locales al servidor remoto
+Conexão de aplicativos locais para servidores remotos¦Connection from local applications to remote servers¦Conexión de aplicaciones locales a servidores remotos
+Conexão de aplicativos remotos para este computador¦Connection from remote applications to this computer¦Conexión de aplicaciones remotas a este equipo
+Clientes locais¦Local clients¦Clientes locales
+Clientes remotos¦Remote clients¦Clientes remotos
+Servidor local¦Local server¦Servidor local
+Servidor remoto¦Remote server¦Servidor remoto
+Servidor SSH¦SSH server¦Servidor SSH
+Firewall¦Firewall¦Cortafuegos
+Túnel SSH¦SSH tunnel¦Túnel SSH
+Meu computador com NxATerm¦My computer running NxATerm¦Mi equipo con NxATerm
+<Servidor remoto>¦<Remote server>¦<Servidor remoto>
+<Servidor local>¦<Local server>¦<Servidor local>
+<Porta remota>¦<Remote port>¦<Puerto remoto>
+<Porta local>¦<Local port>¦<Puerto local>
+<Porta encaminhada>¦<Forwarded port>¦<Puerto redirigido>
+<Servidor SSH>¦<SSH server>¦<Servidor SSH>
+<Login SSH>¦<SSH login>¦<Usuario SSH>
+<Porta SSH>¦<SSH port>¦<Puerto SSH>
+<Chave privada>¦<Private key>¦<Clave privada>
+Informe a porta encaminhada (1-65535)¦Enter the forwarded port (1-65535)¦Indique el puerto redirigido (1-65535)
+Informe o servidor remoto¦Enter the remote server¦Indique el servidor remoto
+Informe o servidor local¦Enter the local server¦Indique el servidor local
+Informe a porta remota (1-65535)¦Enter the remote port (1-65535)¦Indique el puerto remoto (1-65535)
+Informe a porta local (1-65535)¦Enter the local port (1-65535)¦Indique el puerto local (1-65535)
+Informe o servidor SSH¦Enter the SSH server¦Indique el servidor SSH
+Porta SSH inválida (1-65535)¦Invalid SSH port (1-65535)¦Puerto SSH no válido (1-65535)
+Informe o login SSH¦Enter the SSH login¦Indique el usuario SSH
+Informe a chave privada¦Enter the private key¦Indique la clave privada
 `

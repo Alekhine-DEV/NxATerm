@@ -37,7 +37,7 @@ type TermService struct {
 	settingsPath string
 
 	tunMu   sync.Mutex
-	tunnels map[string]*tunnel
+	tunnels map[string]*activeTunnel
 
 	promptMu sync.Mutex
 	prompts  map[string]chan promptAnswer
@@ -94,7 +94,7 @@ func NewTermService(app *application.App) (*TermService, error) {
 		macros:       ms,
 		tombs:        tl,
 		settingsPath: filepath.Join(dir, "settings.json"),
-		tunnels:      map[string]*tunnel{},
+		tunnels:      map[string]*activeTunnel{},
 		prompts:      map[string]chan promptAnswer{},
 		xf:           newXferState(),
 	}, nil

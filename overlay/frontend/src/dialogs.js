@@ -283,63 +283,6 @@ export function editMacro(existing, onChange) {
   name.focus()
 }
 
-// ------------------------------------------------------------------ túneis
-export function tunnelDialog(getActive) {
-  const act = getActive()
-  const kind = h('select', {},
-    h('option', { value: 'local' }, 'Local'),
-    h('option', { value: 'remote' }, 'Remoto'),
-    h('option', { value: 'dynamic' }, 'Dinâmico (SOCKS5)'))
-  const lport = h('input', { type: 'number', min: 1, max: 65535 })
-  const dhost = h('input', { type: 'text', value: 'localhost', spellcheck: 'false' })
-  const dport = h('input', { type: 'number', min: 1, max: 65535 })
-  const destRow = h('div', { class: 'row' },
-    h('div', {}, h('label', {}, 'Host de destino'), dhost),
-    h('div', { class: 'narrow' }, h('label', {}, 'Porta destino'), dport))
-  const list = h('div', { class: 'tun-list' })
-  const sync = () => {
-    destRow.classList.toggle('hidden', kind.value === 'dynamic')
-  }
-  kind.addEventListener('change', sync)
-  sync()
-
-  const refresh = async () => {
-    try {
-      const all = (await Api.TunnelList()) || []
-      list.replaceChildren(...(all.length
-        ? all.map((t) => h('div', { class: 'tun-row' },
-          h('span', { class: 'grow' }, t.desc),
-          h('button', {
-            class: 'danger', onclick: async () => {
-              try { await Api.TunnelStop(t.id) } catch (e) { toast(cleanErr(e), true) }
-              refresh()
-            },
-          }, 'Parar')))
-        : [h('div', { class: 'muted' }, 'Nenhum túnel ativo.')]))
-    } catch (e) { list.replaceChildren(h('div', { class: 'muted' }, cleanErr(e))) }
-  }
-  const start = async () => {
-    const a = getActive()
-    if (!a) return toast('Abra uma sessão SSH primeiro.', true)
-    try {
-      await Api.TunnelStart(a.id, kind.value, parseInt(lport.value, 10) || 0, dhost.value.trim(), parseInt(dport.value, 10) || 0)
-      toast('Túnel ativo')
-      refresh()
-    } catch (e) { toast(cleanErr(e), true) }
-  }
-
-  openModal([
-    h('h2', {}, 'Túneis SSH'),
-    field('Tipo', kind),
-    h('label', {}, 'Porta de escuta'), lport,
-    destRow,
-    h('div', { class: 'btns' }, h('button', { class: 'primary', onclick: start, disabled: !act }, 'Iniciar túnel')),
-    h('h3', {}, 'Túneis ativos'), list,
-    h('div', { class: 'btns' }, h('button', { onclick: closeModal }, 'Fechar')),
-  ], 'wide')
-  refresh()
-}
-
 // ------------------------------------------------------------------ gerador de chaves
 export function keygenDialog() {
   const comment = h('input', { type: 'text', spellcheck: 'false' })

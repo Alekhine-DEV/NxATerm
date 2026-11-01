@@ -4,124 +4,190 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"io"
-	"net"
+	"os"
+	"path/filepath"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"nxaterm/internal/secfile"
+	"nxaterm/internal/store"
+	"nxaterm/internal/tunnel"
 )
 
-// TunnelInfo descreve um túnel SSH ativo (aparece na janela "Túneis").
+// TunnelDef é um túnel salvo (a lista da janela "Túneis SSH"). Cada túnel abre a sua própria
+// conexão SSH, sem depender de uma aba aberta. A senha nunca é guardada.
+type TunnelDef struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"` // "local", "remote" ou "dynamic"
+	ListenPort int    `json:"listenPort"`
+	DestHost   string `json:"destHost"`
+	DestPort   int    `json:"destPort"`
+	SessionID  string `json:"sessionId"` // sessão SSH salva usada como base (proxy e servidor de salto)
+	Host       string `json:"host"`
+	Port       int    `json:"port"`
+	User       string `json:"user"`
+	AuthMethod string `json:"authMethod"` // "password" ou "key"
+	KeyPath    string `json:"keyPath"`
+}
+
+// TunnelInfo descreve um túnel ativo.
 type TunnelInfo struct {
 	ID         string `json:"id"`
-	TermID     string `json:"termId"`
-	Kind       string `json:"kind"` // "local", "remote" ou "dynamic"
+	DefID      string `json:"defId"`
+	Kind       string `json:"kind"`
 	ListenPort int    `json:"listenPort"`
 	DestHost   string `json:"destHost"`
 	DestPort   int    `json:"destPort"`
 	Desc       string `json:"desc"`
 }
 
-type tunnel struct {
-	info TunnelInfo
-	ln   net.Listener
-	once sync.Once
+type activeTunnel struct {
+	info   TunnelInfo
+	tn     *tunnel.Tunnel
+	client *ssh.Client
+	once   sync.Once
 }
 
-func (t *tunnel) stop() { t.once.Do(func() { t.ln.Close() }) }
+func (t *activeTunnel) stop() {
+	t.once.Do(func() {
+		t.tn.Stop()
+		t.client.Close()
+	})
+}
 
-// TunnelStart abre um túnel usando a conexão SSH da aba termID.
+func (a *TermService) tunnelsPath() string {
+	return filepath.Join(filepath.Dir(a.settingsPath), "tunnels.json")
+}
+
+// LoadTunnelDefs devolve o JSON da lista de túneis salvos ("" se ainda não existe).
+func (a *TermService) LoadTunnelDefs() (string, error) {
+	data, err := secfile.Read(a.tunnelsPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	return string(data), err
+}
+
+// SaveTunnelDefs grava a lista de túneis salvos (criptografada quando há senha de abertura).
+func (a *TermService) SaveTunnelDefs(js string) error {
+	if len(js) > 1<<20 {
+		return errors.New("lista de túneis grande demais")
+	}
+	return secfile.Write(a.tunnelsPath(), []byte(js))
+}
+
+// tunnelSession monta a sessão SSH do túnel: parte da sessão salva escolhida (para herdar proxy e
+// servidor de salto) e aplica por cima o que está no próprio túnel.
+func (a *TermService) tunnelSession(d TunnelDef) (store.Session, error) {
+	var s store.Session
+	if d.SessionID != "" {
+		if b, ok := a.store.Get(d.SessionID); ok && (b.Type == store.TypeSSH || b.Type == store.TypeSFTP) {
+			s = b
+		}
+	}
+	s.Type = store.TypeSSH
+	if d.Host != "" {
+		s.Host = d.Host
+	}
+	if d.Port != 0 {
+		s.Port = d.Port
+	}
+	if d.User != "" {
+		s.User = d.User
+	}
+	if d.AuthMethod != "" {
+		s.AuthMethod = d.AuthMethod
+	}
+	if d.AuthMethod == "key" || s.AuthMethod == "key" {
+		s.KeyPath = d.KeyPath
+	}
+	if s.Name == "" {
+		s.Name = d.Name
+	}
+	if s.Name == "" {
+		s.Name = s.Host
+	}
+	if s.Host == "" {
+		return s, errors.New("informe o servidor SSH")
+	}
+	if s.Port == 0 {
+		s.Port = 22
+	}
+	return store.Normalize(s)
+}
+
+// TunnelOpen conecta ao servidor SSH do túnel e o coloca para funcionar. secret é a senha (ou a
+// senha da chave privada).
 //
 //	local   : 127.0.0.1:listenPort (aqui)  ->  destHost:destPort (visto do servidor)
 //	remote  : 127.0.0.1:listenPort (servidor) -> destHost:destPort (visto daqui)
 //	dynamic : proxy SOCKS5 em 127.0.0.1:listenPort (aqui), saindo pelo servidor
 //
-// Os túneis só escutam em 127.0.0.1 e acabam junto com a aba.
-func (a *TermService) TunnelStart(termID, kind string, listenPort int, destHost string, destPort int) (TunnelInfo, error) {
-	ts, err := a.term(termID)
+// Os túneis só escutam em 127.0.0.1. Evento "tunnel:closed" (com o ID do túnel salvo) quando a
+// conexão cai.
+func (a *TermService) TunnelOpen(d TunnelDef, secret string) (TunnelInfo, error) {
+	if d.ID == "" {
+		return TunnelInfo{}, errors.New("túnel sem identificador")
+	}
+	a.tunMu.Lock()
+	for _, t := range a.tunnels {
+		if t.info.DefID == d.ID {
+			a.tunMu.Unlock()
+			return TunnelInfo{}, errors.New("este túnel já está ativo")
+		}
+	}
+	a.tunMu.Unlock()
+
+	s, err := a.tunnelSession(d)
 	if err != nil {
 		return TunnelInfo{}, err
 	}
-	client, err := ts.sshClient()
+	client, err := a.connectSSH(s, secret, 0)
 	if err != nil {
-		return TunnelInfo{}, errors.New("túneis só funcionam em sessões SSH e SFTP")
+		return TunnelInfo{}, err
 	}
-	if listenPort < 1 || listenPort > 65535 {
-		return TunnelInfo{}, errors.New("porta de escuta inválida (1-65535)")
-	}
-	if kind != "dynamic" {
-		if destHost == "" {
-			return TunnelInfo{}, errors.New("informe o host de destino")
-		}
-		if destPort < 1 || destPort > 65535 {
-			return TunnelInfo{}, errors.New("porta de destino inválida (1-65535)")
-		}
-	}
-	listen := net.JoinHostPort("127.0.0.1", strconv.Itoa(listenPort))
-	dest := net.JoinHostPort(destHost, strconv.Itoa(destPort))
-
-	tn := &tunnel{info: TunnelInfo{
-		TermID: termID, Kind: kind, ListenPort: listenPort, DestHost: destHost, DestPort: destPort,
-	}}
-	switch kind {
-	case "local":
-		tn.ln, err = net.Listen("tcp", listen)
-		tn.info.Desc = fmt.Sprintf("local 127.0.0.1:%d → %s", listenPort, dest)
-	case "remote":
-		tn.ln, err = client.Listen("tcp", listen)
-		tn.info.Desc = fmt.Sprintf("remoto (servidor) 127.0.0.1:%d → %s", listenPort, dest)
-	case "dynamic":
-		tn.ln, err = net.Listen("tcp", listen)
-		tn.info.Desc = fmt.Sprintf("SOCKS5 127.0.0.1:%d", listenPort)
-	default:
-		return TunnelInfo{}, errors.New("tipo de túnel desconhecido")
-	}
+	tn, err := tunnel.Start(client, d.Kind, d.ListenPort, d.DestHost, d.DestPort)
 	if err != nil {
-		return TunnelInfo{}, fmt.Errorf("não foi possível abrir o túnel: %w", err)
+		client.Close()
+		return TunnelInfo{}, err
 	}
 	b := make([]byte, 6)
 	rand.Read(b)
-	tn.info.ID = hex.EncodeToString(b)
-
+	at := &activeTunnel{tn: tn, client: client, info: TunnelInfo{
+		ID: hex.EncodeToString(b), DefID: d.ID, Kind: d.Kind,
+		ListenPort: d.ListenPort, DestHost: d.DestHost, DestPort: d.DestPort, Desc: tn.Desc,
+	}}
 	a.tunMu.Lock()
-	a.tunnels[tn.info.ID] = tn
+	a.tunnels[at.info.ID] = at
 	a.tunMu.Unlock()
 
+	// conexão caiu: o túnel acaba e a janela é avisada
 	go func() {
-		for {
-			c, err := tn.ln.Accept()
-			if err != nil {
+		client.Wait()
+		a.tunMu.Lock()
+		_, still := a.tunnels[at.info.ID]
+		delete(a.tunnels, at.info.ID)
+		a.tunMu.Unlock()
+		at.stop()
+		if still {
+			a.app.Event.Emit("tunnel:closed", at.info.DefID)
+		}
+	}()
+	// keepalive para não cair por inatividade
+	go func() {
+		tk := time.NewTicker(30 * time.Second)
+		defer tk.Stop()
+		for range tk.C {
+			if _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
 				return
-			}
-			switch kind {
-			case "local":
-				go func() {
-					rc, err := client.Dial("tcp", dest)
-					if err != nil {
-						c.Close()
-						return
-					}
-					pipe(c, rc)
-				}()
-			case "remote":
-				go func() {
-					lc, err := net.DialTimeout("tcp", dest, 10*time.Second)
-					if err != nil {
-						c.Close()
-						return
-					}
-					pipe(c, lc)
-				}()
-			case "dynamic":
-				go socks5(client, c)
 			}
 		}
 	}()
-	return tn.info, nil
+	return at.info, nil
 }
 
 // TunnelList devolve os túneis ativos.
@@ -136,7 +202,7 @@ func (a *TermService) TunnelList() []TunnelInfo {
 	return out
 }
 
-// TunnelStop encerra um túnel.
+// TunnelStop encerra um túnel ativo.
 func (a *TermService) TunnelStop(id string) error {
 	a.tunMu.Lock()
 	t, ok := a.tunnels[id]
@@ -149,24 +215,9 @@ func (a *TermService) TunnelStop(id string) error {
 	return nil
 }
 
-func (a *TermService) stopTunnelsOf(termID string) {
-	a.tunMu.Lock()
-	var list []*tunnel
-	for id, t := range a.tunnels {
-		if t.info.TermID == termID {
-			list = append(list, t)
-			delete(a.tunnels, id)
-		}
-	}
-	a.tunMu.Unlock()
-	for _, t := range list {
-		t.stop()
-	}
-}
-
 func (a *TermService) stopAllTunnels() {
 	a.tunMu.Lock()
-	list := make([]*tunnel, 0, len(a.tunnels))
+	list := make([]*activeTunnel, 0, len(a.tunnels))
 	for id, t := range a.tunnels {
 		list = append(list, t)
 		delete(a.tunnels, id)
@@ -175,82 +226,4 @@ func (a *TermService) stopAllTunnels() {
 	for _, t := range list {
 		t.stop()
 	}
-}
-
-// pipe copia nos dois sentidos e fecha tudo quando um lado terminar.
-func pipe(a, b io.ReadWriteCloser) {
-	done := make(chan struct{}, 2)
-	cp := func(dst, src io.ReadWriteCloser) {
-		io.Copy(dst, src)
-		done <- struct{}{}
-	}
-	go cp(a, b)
-	go cp(b, a)
-	<-done
-	a.Close()
-	b.Close()
-	<-done
-}
-
-// socks5 implementa o mínimo do SOCKS5 (sem autenticação, só CONNECT).
-func socks5(client *ssh.Client, c net.Conn) {
-	defer c.Close()
-	c.SetDeadline(time.Now().Add(15 * time.Second))
-	buf := make([]byte, 262)
-
-	// saudação: VER NMETHODS METHODS...
-	if _, err := io.ReadFull(c, buf[:2]); err != nil || buf[0] != 5 {
-		return
-	}
-	if _, err := io.ReadFull(c, buf[:int(buf[1])]); err != nil {
-		return
-	}
-	c.Write([]byte{5, 0})
-
-	// pedido: VER CMD RSV ATYP ...
-	if _, err := io.ReadFull(c, buf[:4]); err != nil || buf[0] != 5 {
-		return
-	}
-	if buf[1] != 1 { // só CONNECT
-		c.Write([]byte{5, 7, 0, 1, 0, 0, 0, 0, 0, 0})
-		return
-	}
-	var host string
-	switch buf[3] {
-	case 1:
-		if _, err := io.ReadFull(c, buf[:4]); err != nil {
-			return
-		}
-		host = net.IP(append([]byte(nil), buf[:4]...)).String()
-	case 4:
-		if _, err := io.ReadFull(c, buf[:16]); err != nil {
-			return
-		}
-		host = net.IP(append([]byte(nil), buf[:16]...)).String()
-	case 3:
-		if _, err := io.ReadFull(c, buf[:1]); err != nil {
-			return
-		}
-		n := int(buf[0])
-		if _, err := io.ReadFull(c, buf[:n]); err != nil {
-			return
-		}
-		host = string(buf[:n])
-	default:
-		c.Write([]byte{5, 8, 0, 1, 0, 0, 0, 0, 0, 0})
-		return
-	}
-	if _, err := io.ReadFull(c, buf[:2]); err != nil {
-		return
-	}
-	port := int(buf[0])<<8 | int(buf[1])
-
-	rc, err := client.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
-	if err != nil {
-		c.Write([]byte{5, 5, 0, 1, 0, 0, 0, 0, 0, 0})
-		return
-	}
-	c.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0})
-	c.SetDeadline(time.Time{})
-	pipe(c, rc)
 }

@@ -467,3 +467,18 @@ func shellQuoteRest(p string) string {
 	}
 	return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'"
 }
+
+// pipe copia nos dois sentidos e fecha tudo quando um lado terminar.
+func pipe(a, b io.ReadWriteCloser) {
+	done := make(chan struct{}, 2)
+	cp := func(dst, src io.ReadWriteCloser) {
+		io.Copy(dst, src)
+		done <- struct{}{}
+	}
+	go cp(a, b)
+	go cp(b, a)
+	<-done
+	a.Close()
+	b.Close()
+	<-done
+}

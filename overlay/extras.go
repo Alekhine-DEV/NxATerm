@@ -107,7 +107,7 @@ func (a *TermService) unlockData(pw string) error {
 }
 
 // secretFileNames são os arquivos, além de sessões e macros, que acompanham a criptografia.
-var secretFileNames = []string{"settings.json", "ai-key.txt", "mcp-token.txt", "sync-secrets.json"}
+var secretFileNames = []string{"settings.json", "tunnels.json", "ai-key.txt", "mcp-token.txt", "sync-secrets.json"}
 
 func (a *TermService) readSecretFiles() (map[string][]byte, error) {
 	dir := filepath.Dir(a.settingsPath)

@@ -14,7 +14,7 @@ import {
   openModal, closeModal, modalOpen, promptBox, confirmBox, showMenu, closeMenu, attachTip, hideTip, comboOpen,
 } from './util.js'
 import { settings, loadSettings, saveSettings, termOptions } from './settings.js'
-import { editSession, editMacro, tunnelDialog, keygenDialog, aboutDialog, shortcutsDialog } from './dialogs.js'
+import { editSession, editMacro, keygenDialog, aboutDialog, shortcutsDialog } from './dialogs.js'
 import { keyOf, actionFor, capture } from './keys.js'
 import { memo, memoKey } from './memo.js'
 import { settingsDialog } from './settingsdlg.js'
@@ -24,6 +24,7 @@ import { initConnect } from './connect.js'
 import { attachHighlight } from './highlight.js'
 import { createZmodem } from './zmodemfx.js'
 import { createTrzsz } from './trzszfx.js'
+import { openTunnelWindow } from './tunnels.js'
 import { setLigatures } from './ligatures.js'
 import { batchDialog } from './batch.js'
 import { syncDialog, syncOnOpen } from './sync.js'
@@ -222,9 +223,12 @@ const syncHooks = () => ({
 function openSync() { syncDialog(syncHooks()) }
 
 function openTunnels() {
-  tunnelDialog(() => {
-    const t = activeTab()
-    return t && !t.dead && hasSSH(t.session) ? { id: t.id, name: t.label } : null
+  openTunnelWindow({
+    sessions: () => sessions,
+    current: () => {
+      const t = activeTab()
+      return t && hasSSH(t.session) ? t.session : null
+    },
   })
 }
 

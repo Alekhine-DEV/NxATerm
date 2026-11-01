@@ -307,7 +307,6 @@ func (a *TermService) Connect(id string, s store.Session, secret string, cols, r
 			werr = t.readErr
 		}
 		t.close()
-		a.stopTunnelsOf(id)
 		a.stopTransfersOf(id)
 		a.termMu.Lock()
 		delete(a.terms, id)
