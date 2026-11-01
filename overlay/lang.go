@@ -16,6 +16,9 @@ var goText = map[string][2]string{
 	"Escolha a pasta onde salvar":              {"Choose the folder to save to", "Elija la carpeta donde guardar"},
 	"Escolha os arquivos para enviar (Zmodem)": {"Choose the files to send (Zmodem)", "Elija los archivos para enviar (Zmodem)"},
 	"Salvar arquivos recebidos em (Zmodem)":    {"Save received files to (Zmodem)", "Guardar los archivos recibidos en (Zmodem)"},
+	"Escolha os arquivos para enviar (Trzsz)":  {"Choose the files to send (Trzsz)", "Elija los archivos para enviar (Trzsz)"},
+	"Escolha a pasta para enviar (Trzsz)":      {"Choose the folder to send (Trzsz)", "Elija la carpeta para enviar (Trzsz)"},
+	"Salvar arquivos recebidos em (Trzsz)":     {"Save received files to (Trzsz)", "Guardar los archivos recibidos en (Trzsz)"},
 	"Mostrar o NxATerm":                        {"Show NxATerm", "Mostrar NxATerm"},
 	"Sair":                                     {"Quit", "Salir"},
 }

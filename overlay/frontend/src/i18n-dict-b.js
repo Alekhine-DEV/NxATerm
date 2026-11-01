@@ -207,6 +207,7 @@ Todas as sessões¦All sessions¦Todas las sesiones
 Token do GitHub¦GitHub token¦Token de GitHub
 Transferindo¦Transferring¦Transfiriendo
 Transferir arquivos pelo terminal (Zmodem: rz e sz)¦Transfer files through the terminal (Zmodem: rz and sz)¦Transferir archivos por el terminal (Zmodem: rz y sz)
+Transferir arquivos pelo terminal (Trzsz: trz e tsz)¦Transfer files through the terminal (Trzsz: trz and tsz)¦Transferir archivos por el terminal (Trzsz: trz y tsz)
 Transferências¦Transfers¦Transferencias
 Transferências concluídas¦Transfers completed¦Transferencias completadas
 Túneis¦Tunnels¦Túneles

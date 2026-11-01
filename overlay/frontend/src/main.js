@@ -23,6 +23,7 @@ import { applyAppearance, setBackgroundData, setStartupTransparent } from './uit
 import { initConnect } from './connect.js'
 import { attachHighlight } from './highlight.js'
 import { createZmodem } from './zmodemfx.js'
+import { createTrzsz } from './trzszfx.js'
 import { batchDialog } from './batch.js'
 import { syncDialog, syncOnOpen } from './sync.js'
 import { setLang } from './i18n.js'
@@ -932,13 +933,18 @@ async function startTab(s, secret) {
       try { dec = new TextDecoder(s.encoding) } catch { dec = new TextDecoder('utf-8') }
       toTerm = (bytes) => term.write(dec.decode(bytes, { stream: true }))
     }
-    if (settings.zmodem && ['ssh', 'serial', 'wsl', 'shell', 'telnet'].includes(kind)) {
-      tab.zm = createZmodem({ id, term, pane, write: toTerm })
+    const shellLike = ['ssh', 'serial', 'wsl', 'shell', 'telnet'].includes(kind)
+    if (settings.trzsz && shellLike) {
+      tab.tz = createTrzsz({ id, term, write: toTerm, windowsShell: kind === 'shell' && /Windows/i.test(navigator.userAgent) })
+    }
+    const sink = tab.tz ? (b) => tab.tz.output(b) : toTerm
+    if (settings.zmodem && shellLike) {
+      tab.zm = createZmodem({ id, term, pane, write: sink })
     }
     tab.unsub.push(Events.On('term:data:' + id, (ev) => {
       const bytes = b64ToBytes(payload(ev))
       if (tab.zm) tab.zm.consume(bytes)
-      else toTerm(bytes)
+      else sink(bytes)
     }))
   }
   tab.unsub.push(Events.On('term:closed:' + id, (ev) => markDead(id, payload(ev))))
@@ -975,9 +981,10 @@ function wireTerminal(tab) {
   term.onData((d) => {
     if (tab.dead) { if (d === '\r') reconnectTab(tab); return }
     if (tab.zm && tab.zm.active) return // durante o Zmodem o teclado não vai ao servidor
+    if (tab.tz && tab.tz.active) { tab.tz.input(d); return } // no Trzsz só Ctrl+C vale (cancela)
     for (const t of broadcastTargets(tab)) Api.Write(t.id, d).catch(() => {})
   })
-  term.onResize(({ cols, rows }) => { if (!tab.dead) Api.Resize(id, cols, rows).catch(() => {}) })
+  term.onResize(({ cols, rows }) => { tab.tz?.resize(cols); if (!tab.dead) Api.Resize(id, cols, rows).catch(() => {}) })
 
   let raf = 0
   new ResizeObserver(() => {
@@ -1082,6 +1089,7 @@ function disposeTab(id) {
   t.unsub.forEach((u) => { try { u() } catch { /* já removido */ } })
   try { t.hl?.stop() } catch { /* ok */ }
   try { t.zm?.dispose() } catch { /* ok */ }
+  try { t.tz?.dispose() } catch { /* ok */ }
   if (t.vnc) disposeVnc(t.vnc)
   try { if (t.term) t.term.dispose() } catch { /* já removido */ }
   t.pane.remove()

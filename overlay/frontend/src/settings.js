@@ -56,6 +56,7 @@ export const DEFAULTS = {
   history: [], // conexões recentes: [{ at, s: sessão }]
   workspaces: {}, // espaços de trabalho: { nome: { items: [sessão], layout } }
   zmodem: true, // transferências rz/sz pelo terminal
+  trzsz: true, // transferências trz/tsz pelo terminal
   inlineImages: true, // mostra imagens no terminal (sixel e protocolo do iTerm2)
   ai: { preset: 'openai', baseUrl: 'https://api.openai.com/v1', model: '', agent: false, withScreen: true, extra: '', remember: false }, // assistente (a chave não fica aqui)
   mcp: { enabled: false, port: 7399 }, // servidor MCP local
@@ -90,7 +91,7 @@ export function normalizeSettings() {
   settings.termOpacity = clampF(settings.termOpacity, 0.2, 1, 1)
   settings.uiOpacity = clampF(settings.uiOpacity, 0.4, 1, DEFAULTS.uiOpacity)
   for (const k of ['windowTransparent', 'webgl']) settings[k] = !!settings[k]
-  for (const k of ['unicode11', 'inlineImages', 'zmodem']) settings[k] = settings[k] !== false
+  for (const k of ['unicode11', 'inlineImages', 'zmodem', 'trzsz']) settings[k] = settings[k] !== false
   for (const k of ['tray', 'closeToTray']) settings[k] = !!settings[k]
   settings.checkUpdates = settings.checkUpdates !== false
   for (const k of ['globalHotkey', 'skipVersion']) if (typeof settings[k] !== 'string') settings[k] = ''
