@@ -1,9 +1,12 @@
 // VNC dentro do app: o noVNC (cliente VNC em JavaScript, MPL-2.0) fala com uma ponte WebSocket local
 // aberta pelo backend (só 127.0.0.1, uso único), que repassa os bytes ao servidor VNC.
-import RFB from '@novnc/novnc/core/rfb.js'
+import * as rfbModule from '@novnc/novnc/lib/rfb.js'
 import { Api } from './api.js'
 import { h, toast, promptBox } from './util.js'
 import { memo, memoKey } from './memo.js'
+
+// O pacote npm só traz a versão CommonJS (lib/); o export pode vir aninhado.
+const RFB = rfbModule.default?.default ?? rfbModule.default ?? rfbModule
 
 /** Painel de uma aba VNC. */
 export function createVncView(label) {
