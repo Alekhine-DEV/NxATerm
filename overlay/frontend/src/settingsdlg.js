@@ -255,7 +255,7 @@ function show(st) {
     check('multiInstance', 'Permitir várias janelas do NxATerm'),
     check('tray', 'Ícone na bandeja do sistema (ao reabrir o app)'),
     check('closeToTray', 'Fechar a janela envia para a bandeja (ao reabrir o app)'),
-    isWindows ? field('Atalho global para mostrar/esconder', txt('globalHotkey', 'Nenhum (ex.: Ctrl+Alt+T)')) : null,
+    field('Atalho global para mostrar/esconder', txt('globalHotkey', 'Nenhum (ex.: Ctrl+Alt+T)')),
     check('checkUpdates', 'Avisar de versão nova ao abrir'),
     h('div', { class: 'set-actions' },
       h('button', { onclick: () => lockDialog(() => show(st)) }, 'Senha de abertura...')),
@@ -288,7 +288,7 @@ function show(st) {
           draft.proxy = String(draft.proxy).trim()
           draft.editor = String(draft.editor).trim()
           draft.highlight.rules = draft.highlight.rules.filter((r) => r.pattern)
-          const hotkeyChanged = isWindows && draft.globalHotkey.trim() !== settings.globalHotkey
+          const hotkeyChanged = String(draft.globalHotkey).trim() !== settings.globalHotkey
           draft.globalHotkey = String(draft.globalHotkey).trim()
           for (const k of KEYS) settings[k] = draft[k]
           saveSettings()

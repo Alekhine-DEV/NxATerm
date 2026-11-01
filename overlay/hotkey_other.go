@@ -1,13 +1,13 @@
-//go:build !windows
+//go:build !windows && !linux && !darwin
 
 package main
 
 import "errors"
 
-// setGlobalHotkey: o atalho global só existe no Windows (no Linux depende do ambiente gráfico).
+// setGlobalHotkey: sem suporte neste sistema.
 func setGlobalHotkey(spec string, onPress func()) error {
 	if spec == "" {
 		return nil
 	}
-	return errors.New("o atalho global só está disponível no Windows")
+	return errors.New("o atalho global não está disponível neste sistema")
 }

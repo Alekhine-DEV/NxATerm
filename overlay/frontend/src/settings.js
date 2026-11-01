@@ -49,7 +49,7 @@ export const DEFAULTS = {
   webgl: false, // renderizador acelerado por GPU
   tray: false, // ícone na bandeja do sistema (vale ao reabrir)
   closeToTray: false, // fechar a janela só a esconde (vale ao reabrir)
-  globalHotkey: '', // Windows: atalho que mostra/esconde a janela
+  globalHotkey: '', // atalho que mostra/esconde a janela
   checkUpdates: true, // avisa de versão nova ao abrir
   skipVersion: '',
   macroScope: 'all', // lista de macros: 'all' ou 'active' (só as da sessão ativa)

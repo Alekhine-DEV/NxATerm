@@ -23,7 +23,7 @@ type startupSettings struct {
 	WindowTransparent bool   `json:"windowTransparent"`
 	Tray              bool   `json:"tray"`         // ícone na bandeja do sistema
 	CloseToTray       bool   `json:"closeToTray"`  // fechar a janela só esconde
-	GlobalHotkey      string `json:"globalHotkey"` // Windows: mostra/esconde a janela
+	GlobalHotkey      string `json:"globalHotkey"` // mostra/esconde a janela
 }
 
 func readStartupSettings() startupSettings {

@@ -203,4 +203,12 @@ Senha do proxy {0}¦Proxy password {0}¦Contraseña del proxy {0}
 Senha da chave privada de {0}¦Private key passphrase for {0}¦Contraseña de la clave privada de {0}
 Chave protegida¦Protected key¦Clave protegida
 Verificação em duas etapas¦Two-step verification¦Verificación en dos pasos
+no Wayland o sistema não permite atalhos globais; crie um atalho nas configurações do sistema que execute o comando nxaterm (ele traz a janela para a frente)¦on Wayland the system does not allow global shortcuts; create a shortcut in your system settings that runs the nxaterm command (it brings the window to the front)¦en Wayland el sistema no permite atajos globales; cree un atajo en la configuración del sistema que ejecute el comando nxaterm (trae la ventana al frente)
+sem servidor gráfico X11 (DISPLAY vazio)¦no X11 graphical server (DISPLAY is empty)¦sin servidor gráfico X11 (DISPLAY vacío)
+não foi possível conectar ao servidor X11: {0}¦could not connect to the X11 server: {0}¦no se pudo conectar al servidor X11: {0}
+não foi possível ler o teclado: {0}¦could not read the keyboard: {0}¦no se pudo leer el teclado: {0}
+a tecla "{0}" não existe no teclado atual¦the key "{0}" does not exist on the current keyboard¦la tecla "{0}" no existe en el teclado actual
+o atalho "{0}" já está em uso por outro programa ({1})¦the shortcut "{0}" is already in use by another program ({1})¦el atajo "{0}" ya está en uso por otro programa ({1})
+o macOS recusou o atalho "{0}" (já está em uso?): código {1}¦macOS refused the shortcut "{0}" (is it already in use?): code {1}¦macOS rechazó el atajo "{0}" (¿ya está en uso?): código {1}
+o atalho global não está disponível neste sistema¦the global shortcut is not available on this system¦el atajo global no está disponible en este sistema
 `
