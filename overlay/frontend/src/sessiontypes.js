@@ -4,8 +4,8 @@ export const TYPE_INFO = {
   sftp: { label: 'SFTP', icon: 'folder', tabIcon: 'folder', color: '#f5a43a', defPort: 22 },
   ftp: { label: 'FTP', icon: 'ftp', tabIcon: 'ftp', color: '#4fd1d1', defPort: 21 },
   telnet: { label: 'Telnet', icon: 'telnet', tabIcon: 'telnet', color: '#b07cff', defPort: 23 },
-  serial: { label: 'Serial', icon: 'serial', tabIcon: 'serial', color: '#9aa7b3', defPort: 0 },
-  shell: { label: 'Shell', icon: 'shell', tabIcon: 'shell', color: '#d0d0d0', defPort: 0 },
+  serial: { label: 'Serial', icon: 'serial', tabIcon: 'serial', color: 'var(--g-9aa3ad)', defPort: 0 },
+  shell: { label: 'Shell', icon: 'shell', tabIcon: 'shell', color: 'var(--g-cccccc)', defPort: 0 },
   wsl: { label: 'WSL', icon: 'wsl', tabIcon: 'wsl', color: '#4aa8ff', defPort: 0 },
 }
 

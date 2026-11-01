@@ -18,7 +18,8 @@ var assets embed.FS
 
 // startupSettings são as configurações que precisam valer antes da janela existir.
 type startupSettings struct {
-	MultiInstance bool `json:"multiInstance"`
+	MultiInstance     bool `json:"multiInstance"`
+	WindowTransparent bool `json:"windowTransparent"`
 }
 
 func readStartupSettings() startupSettings {
@@ -62,7 +63,7 @@ func main() {
 	}
 	app.RegisterService(application.NewService(svc))
 
-	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	winOpts := application.WebviewWindowOptions{
 		Title:            "NxATerm",
 		Width:            1280,
 		Height:           800,
@@ -71,7 +72,13 @@ func main() {
 		BackgroundColour: application.NewRGB(24, 25, 30),
 		URL:              "/",
 		EnableFileDrop:   true,
-	})
+	}
+	if cfg.WindowTransparent {
+		// janela transparente: a interface define a opacidade (só vale ao reabrir o app)
+		winOpts.BackgroundType = application.BackgroundTypeTransparent
+		winOpts.BackgroundColour = application.NewRGBA(0, 0, 0, 0)
+	}
+	win := app.Window.NewWithOptions(winOpts)
 
 	// arquivos arrastados do sistema para a janela: o frontend decide o que fazer
 	// conforme o elemento (data-file-drop-target) em que foram soltos

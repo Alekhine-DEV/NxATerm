@@ -4,6 +4,9 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
+import { WebglAddon } from '@xterm/addon-webgl'
+import { ImageAddon } from '@xterm/addon-image'
 import * as Runtime from '@wailsio/runtime'
 import { Api } from './api.js'
 import {
@@ -11,10 +14,13 @@ import {
   openModal, closeModal, modalOpen, promptBox, confirmBox, showMenu, closeMenu, attachTip, hideTip, comboOpen,
 } from './util.js'
 import { settings, loadSettings, saveSettings, termOptions } from './settings.js'
-import { editSession, editMacro, tunnelDialog, keygenDialog, settingsDialog, aboutDialog, shortcutsDialog } from './dialogs.js'
+import { editSession, editMacro, tunnelDialog, keygenDialog, aboutDialog, shortcutsDialog } from './dialogs.js'
 import { keyOf, actionFor, capture } from './keys.js'
 import { memo, memoKey } from './memo.js'
+import { settingsDialog } from './settingsdlg.js'
+import { applyAppearance, setBackgroundData, setStartupTransparent } from './uitheme.js'
 import { initConnect } from './connect.js'
+import { attachHighlight } from './highlight.js'
 import { initFiles, renderSide, buildFileTab } from './files.js'
 import { TYPE_INFO, typeOf, hasFiles, hasSSH, hasTerminal, sessionSummary, isWindows } from './sessiontypes.js'
 
@@ -596,7 +602,7 @@ function renderHome() {
     h('div', { class: 'home-logo' }, icon('terminal', 30), h('span', {}, 'NxATerm')),
     h('div', { class: 'tiles' },
       tile('session', 'Nova sessão', '#4aa8ff', () => editSession(null, refreshSessions)),
-      tile('shell', 'Shell local', '#d0d0d0', openLocalShell),
+      tile('shell', 'Shell local', 'var(--g-cccccc)', openLocalShell),
       tile('upload', 'Importar sessões', '#f5a43a', importFile)),
     recent.length
       ? h('div', { class: 'recent' }, h('div', { class: 'recent-title' }, 'Recentes'),
@@ -699,6 +705,12 @@ async function startTab(s, secret) {
     term.loadAddon(fit)
     term.loadAddon(search)
     term.loadAddon(new WebLinksAddon((_e, uri) => openURL(uri)))
+    if (settings.unicode11) {
+      try { term.loadAddon(new Unicode11Addon()); term.unicode.activeVersion = '11' } catch { /* segue com Unicode 6 */ }
+    }
+    if (settings.inlineImages) {
+      try { term.loadAddon(new ImageAddon()) } catch { /* sem imagens */ }
+    }
 
     host = h('div', { class: 'term-host', id: 'drop-t-' + id, 'data-file-drop-target': true })
     excl = h('input', { type: 'checkbox' })
@@ -741,7 +753,15 @@ async function startTab(s, secret) {
   activate(id) // precisa estar visível para o fit() calcular colunas/linhas
   if (isTerm) {
     term.open(host)
+    if (settings.webgl) {
+      try {
+        const gl = new WebglAddon()
+        gl.onContextLoss(() => gl.dispose())
+        term.loadAddon(gl)
+      } catch { /* sem GPU: fica no renderizador padrão */ }
+    }
     try { fit.fit() } catch { /* ainda sem tamanho */ }
+    tab.hl = attachHighlight(term)
     // listeners ANTES de conectar, para não perder o prompt inicial
     tab.unsub.push(Events.On('term:data:' + id, (ev) => term.write(b64ToBytes(payload(ev)))))
   }
@@ -835,6 +855,7 @@ function applyTermSettings(tab) {
   const o = termOptions()
   for (const [k, v] of Object.entries(o)) tab.term.options[k] = v
   tab.pane.style.background = o.theme.background
+  tab.hl?.refresh()
   try { tab.fit.fit() } catch { /* oculto */ }
 }
 
@@ -880,6 +901,7 @@ function disposeTab(id) {
   const t = tabs.get(id)
   if (!t) return
   t.unsub.forEach((u) => { try { u() } catch { /* já removido */ } })
+  try { t.hl?.stop() } catch { /* ok */ }
   try { if (t.term) t.term.dispose() } catch { /* já removido */ }
   t.pane.remove()
   t.tabEl.classList.add('closing')
@@ -1228,6 +1250,9 @@ function initEvents() {
 
 async function init() {
   await loadSettings()
+  setStartupTransparent(settings.windowTransparent)
+  applyAppearance()
+  if (settings.hasBg) Api.GetBackground().then((d) => setBackgroundData(d)).catch(() => {})
   $('workspace').style.setProperty('--sidew', settings.sidebarWidth + 'px')
   $('statusbar').classList.toggle('hidden', !settings.showStatusBar)
 

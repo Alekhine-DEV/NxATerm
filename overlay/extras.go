@@ -39,7 +39,7 @@ func (a *TermService) LoadSettings() (string, error) {
 
 // SaveSettings grava o JSON das configurações (o conteúdo é só da interface).
 func (a *TermService) SaveSettings(js string) error {
-	if len(js) > 64*1024 {
+	if len(js) > 256*1024 {
 		return errors.New("configurações grandes demais")
 	}
 	if !json.Valid([]byte(js)) {

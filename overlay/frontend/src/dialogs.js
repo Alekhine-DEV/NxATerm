@@ -1,7 +1,6 @@
 import { Api } from './api.js'
 import { h, icon, toast, cleanErr, openModal, closeModal, confirmBox, combo } from './util.js'
 import { ACTIONS, keyOf, setKey, resetKeys, isDefault, comboOf, capture } from './keys.js'
-import { settings, saveSettings, FONTS, THEMES } from './settings.js'
 import { TYPE_INFO, typeOf, availableTypes } from './sessiontypes.js'
 
 const field = (label, el) => [h('label', {}, label), el]
@@ -321,75 +320,6 @@ export function keygenDialog() {
     out,
   ], 'wide')
   comment.focus()
-}
-
-// ------------------------------------------------------------------ configurações
-export function settingsDialog(onApply) {
-  const sel = (opts, cur) => h('select', {}, ...opts.map(([v, l]) => h('option', { value: v, selected: v === cur }, l)))
-  const f = {
-    font: sel(Object.keys(FONTS).map((k) => [k, k]), settings.font),
-    size: h('input', { type: 'number', min: 8, max: 32, value: settings.fontSize }),
-    theme: sel(Object.keys(THEMES).map((k) => [k, k]), settings.theme),
-    cursor: sel([['block', 'Bloco'], ['bar', 'Barra'], ['underline', 'Sublinhado']], settings.cursorStyle),
-    blink: h('input', { type: 'checkbox', checked: settings.cursorBlink }),
-    scroll: h('input', { type: 'number', min: 500, max: 200000, step: 500, value: settings.scrollback }),
-    copy: h('input', { type: 'checkbox', checked: settings.copyOnSelect }),
-    right: sel([['paste', 'Colar'], ['menu', 'Abrir menu']], settings.rightClick),
-    autoSftp: h('input', { type: 'checkbox', checked: settings.autoSftp }),
-    monitoring: h('input', { type: 'checkbox', checked: settings.monitoring }),
-    follow: h('input', { type: 'checkbox', checked: settings.followFolder }),
-    proxy: h('input', { type: 'text', value: settings.proxy, spellcheck: 'false', placeholder: 'Sem proxy (socks5://host:1080 ou http://host:3128)' }),
-    editor: h('input', { type: 'text', value: settings.editor, spellcheck: 'false', placeholder: 'Programa padrão do sistema' }),
-    multi: h('input', { type: 'checkbox', checked: settings.multiInstance }),
-  }
-  const linkBtn = h('button', { onclick: async () => {
-    try { await Api.RegisterLinkHandler(); toast('Links ssh:// e telnet:// agora abrem no NxATerm') } catch (e) { toast(cleanErr(e), true) }
-  } }, 'Abrir links ssh:// e telnet:// com o NxATerm')
-  const apply = () => {
-    settings.font = f.font.value
-    settings.fontSize = Math.min(32, Math.max(8, parseInt(f.size.value, 10) || 14))
-    settings.theme = f.theme.value
-    settings.cursorStyle = f.cursor.value
-    settings.cursorBlink = f.blink.checked
-    settings.scrollback = Math.min(200000, Math.max(500, parseInt(f.scroll.value, 10) || 10000))
-    settings.copyOnSelect = f.copy.checked
-    settings.rightClick = f.right.value
-    settings.autoSftp = f.autoSftp.checked
-    settings.monitoring = f.monitoring.checked
-    settings.followFolder = f.follow.checked
-    settings.proxy = f.proxy.value.trim()
-    settings.editor = f.editor.value.trim()
-    settings.multiInstance = f.multi.checked
-    saveSettings()
-    closeModal()
-    onApply()
-  }
-  openModal([
-    h('h2', {}, 'Configurações'),
-    h('div', { class: 'row' },
-      h('div', {}, h('label', {}, 'Fonte do terminal'), f.font),
-      h('div', { class: 'narrow' }, h('label', {}, 'Tamanho'), f.size)),
-    field('Tema de cores', f.theme),
-    h('div', { class: 'row' },
-      h('div', {}, h('label', {}, 'Cursor'), f.cursor),
-      h('div', {}, h('label', {}, 'Linhas de histórico'), f.scroll)),
-    h('label', { class: 'check' }, f.blink, ' Cursor piscando'),
-    h('label', { class: 'check' }, f.copy, ' Copiar ao selecionar'),
-    field('Botão direito no terminal', f.right),
-    h('h3', {}, 'Servidores SSH'),
-    h('label', { class: 'check' }, f.autoSftp, ' Abrir o navegador SFTP ao conectar'),
-    h('label', { class: 'check' }, f.follow, ' Navegador SFTP acompanha o terminal'),
-    h('label', { class: 'check' }, f.monitoring, ' Uso do servidor na barra de status'),
-    field('Editor de arquivos remotos', f.editor),
-    h('h3', {}, 'Conexão'),
-    field('Proxy geral', f.proxy),
-    h('h3', {}, 'Sistema'),
-    h('label', { class: 'check' }, f.multi, ' Permitir várias janelas do NxATerm'),
-    h('div', { class: 'row' }, linkBtn),
-    h('div', { class: 'btns' },
-      h('button', { onclick: closeModal }, 'Cancelar'),
-      h('button', { class: 'primary', onclick: apply }, 'Aplicar')),
-  ])
 }
 
 // ------------------------------------------------------------------ ajuda
