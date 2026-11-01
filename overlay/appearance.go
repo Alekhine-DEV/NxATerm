@@ -57,7 +57,7 @@ func (a *TermService) backgroundPath() (string, error) {
 // PickBackground escolhe a imagem de fundo do terminal e a guarda na pasta de dados.
 // Devolve a imagem como data URL ("" se o usuário cancelar).
 func (a *TermService) PickBackground() (string, error) {
-	path, err := a.app.Dialog.OpenFile().SetTitle("Escolha a imagem de fundo").PromptForSingleSelection()
+	path, err := a.app.Dialog.OpenFile().SetTitle(tr("Escolha a imagem de fundo")).PromptForSingleSelection()
 	if err != nil && !isCancel(err) {
 		return "", err
 	}

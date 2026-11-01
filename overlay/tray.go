@@ -15,11 +15,28 @@ func (a *TermService) setupTray() {
 	tray.SetIcon(trayIcon)
 	tray.SetTooltip("NxATerm")
 	menu := a.app.Menu.New()
-	menu.Add("Mostrar o NxATerm").OnClick(func(*application.Context) { a.showWindow() })
+	show := menu.Add(tr("Mostrar o NxATerm"))
+	show.OnClick(func(*application.Context) { a.showWindow() })
 	menu.AddSeparator()
-	menu.Add("Sair").OnClick(func(*application.Context) { a.quit() })
+	quit := menu.Add(tr("Sair"))
+	quit.OnClick(func(*application.Context) { a.quit() })
 	tray.SetMenu(menu)
+	a.trayMu.Lock()
+	a.trayMenu, a.trayShow, a.trayQuit = menu, show, quit
+	a.trayMu.Unlock()
 	tray.OnClick(func() { a.toggleWindow() })
+}
+
+// retranslateTray troca os textos do menu da bandeja quando o idioma muda.
+func (a *TermService) retranslateTray() {
+	a.trayMu.Lock()
+	defer a.trayMu.Unlock()
+	if a.trayMenu == nil {
+		return
+	}
+	a.trayShow.SetLabel(tr("Mostrar o NxATerm"))
+	a.trayQuit.SetLabel(tr("Sair"))
+	a.trayMenu.Update()
 }
 
 // quit encerra de verdade (o "fechar para a bandeja" não segura a saída).

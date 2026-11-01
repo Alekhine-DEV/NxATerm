@@ -69,7 +69,7 @@ func (a *TermService) saveAs(name string, data []byte) (string, error) {
 // ImportSessionsFile pergunta qual arquivo abrir e descobre o formato sozinho:
 // exportação do NxATerm (.json), MobaXterm (.mxtsessions / MobaXterm.ini) ou ~/.ssh/config.
 func (a *TermService) ImportSessionsFile() (ImportResult, error) {
-	path, err := a.app.Dialog.OpenFile().SetTitle("Escolha o arquivo de sessões").PromptForSingleSelection()
+	path, err := a.app.Dialog.OpenFile().SetTitle(tr("Escolha o arquivo de sessões")).PromptForSingleSelection()
 	if err != nil && !isCancel(err) {
 		return ImportResult{}, err
 	}

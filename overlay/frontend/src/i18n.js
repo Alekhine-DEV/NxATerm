@@ -5,6 +5,8 @@ import { DICT_A } from './i18n-dict-a.js'
 import { DICT_B } from './i18n-dict-b.js'
 import { DICT_C } from './i18n-dict-c.js'
 import { DICT_D } from './i18n-dict-d.js'
+import { DICT_E } from './i18n-dict-e.js'
+import { Api } from './api.js'
 
 export const LANGS = { pt: 'Português', en: 'English', es: 'Español' }
 const COL = { en: 1, es: 2 }
@@ -12,7 +14,7 @@ const COL = { en: 1, es: 2 }
 const exact = { en: new Map(), es: new Map() }
 const templates = { en: [], es: [] } // { re, out, n }
 
-for (const line of (DICT_A + '\n' + DICT_B + '\n' + DICT_C + '\n' + DICT_D).split('\n')) {
+for (const line of (DICT_A + '\n' + DICT_B + '\n' + DICT_C + '\n' + DICT_D + '\n' + DICT_E).split('\n')) {
   const parts = line.split('¦').map((x) => x.trim())
   if (parts.length < 3 || !parts[0]) continue
   for (const lang of ['en', 'es']) {
@@ -139,6 +141,8 @@ export function setLang(pref) {
   const was = lang
   lang = next
   document.documentElement.lang = { pt: 'pt-BR', en: 'en', es: 'es' }[next]
+  // o backend usa o idioma nos diálogos de arquivo e no menu da bandeja
+  try { Api.SetLanguage(next)?.catch?.(() => {}) } catch { /* sem backend (testes) */ }
   if (!observer) observer = new MutationObserver(onMutations)
   observer.disconnect()
   if (was !== next || next !== 'pt') walk(document.body)

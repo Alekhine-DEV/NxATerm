@@ -52,6 +52,11 @@ type TermService struct {
 	mcpMu   sync.Mutex
 	mcpWait map[string]chan mcpAnswer
 
+	trayMu   sync.Mutex
+	trayMenu *application.Menu
+	trayShow *application.MenuItem
+	trayQuit *application.MenuItem
+
 	quitting atomic.Bool // o usuário pediu para sair de verdade (não é só fechar a janela)
 	toggle   func()      // mostra ou esconde a janela principal
 }
@@ -144,7 +149,7 @@ func (a *TermService) ImportSSHConfig() (int, error) {
 // PickKeyFile abre o seletor de arquivos para escolher a chave privada.
 // Devolve string vazia se o usuário cancelar.
 func (a *TermService) PickKeyFile() (string, error) {
-	dlg := a.app.Dialog.OpenFile().SetTitle("Escolha a chave privada")
+	dlg := a.app.Dialog.OpenFile().SetTitle(tr("Escolha a chave privada"))
 	if home, err := os.UserHomeDir(); err == nil {
 		dlg = dlg.SetDirectory(filepath.Join(home, ".ssh"))
 	}

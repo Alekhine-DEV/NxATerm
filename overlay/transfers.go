@@ -428,13 +428,13 @@ func (a *TermService) PickUpload(tabID, remoteDir string, dirs bool) (int, error
 	var err error
 	if dirs {
 		var p string
-		p, err = a.app.Dialog.OpenFile().SetTitle("Escolha a pasta para enviar").
+		p, err = a.app.Dialog.OpenFile().SetTitle(tr("Escolha a pasta para enviar")).
 			CanChooseDirectories(true).CanChooseFiles(false).PromptForSingleSelection()
 		if p != "" {
 			paths = []string{p}
 		}
 	} else {
-		paths, err = a.app.Dialog.OpenFile().SetTitle("Escolha os arquivos para enviar").PromptForMultipleSelection()
+		paths, err = a.app.Dialog.OpenFile().SetTitle(tr("Escolha os arquivos para enviar")).PromptForMultipleSelection()
 	}
 	if err != nil && !isCancel(err) {
 		return 0, err
@@ -448,7 +448,7 @@ func (a *TermService) PickUpload(tabID, remoteDir string, dirs bool) (int, error
 
 // PickDownload pergunta a pasta de destino e baixa os itens remotos para ela.
 func (a *TermService) PickDownload(tabID string, remotePaths []string) (int, error) {
-	dir, err := a.app.Dialog.OpenFile().SetTitle("Escolha a pasta onde salvar").
+	dir, err := a.app.Dialog.OpenFile().SetTitle(tr("Escolha a pasta onde salvar")).
 		CanChooseDirectories(true).CanChooseFiles(false).CanCreateDirectories(true).PromptForSingleSelection()
 	if err != nil && !isCancel(err) {
 		return 0, err

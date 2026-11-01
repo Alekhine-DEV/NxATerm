@@ -92,7 +92,7 @@ type ZFileInfo struct {
 // ZPickSend pergunta quais arquivos enviar e os deixa abertos para leitura.
 // Lista vazia = o usuário cancelou.
 func (a *TermService) ZPickSend() ([]ZFileInfo, error) {
-	paths, err := a.app.Dialog.OpenFile().SetTitle("Escolha os arquivos para enviar (Zmodem)").PromptForMultipleSelection()
+	paths, err := a.app.Dialog.OpenFile().SetTitle(tr("Escolha os arquivos para enviar (Zmodem)")).PromptForMultipleSelection()
 	if err != nil && !isCancel(err) {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (a *TermService) ZRead(handle string, n int) (string, error) {
 
 // ZPickDir pergunta em que pasta salvar os arquivos recebidos ("" = cancelou).
 func (a *TermService) ZPickDir() (string, error) {
-	p, err := a.app.Dialog.OpenFile().SetTitle("Salvar arquivos recebidos em (Zmodem)").
+	p, err := a.app.Dialog.OpenFile().SetTitle(tr("Salvar arquivos recebidos em (Zmodem)")).
 		CanChooseDirectories(true).CanChooseFiles(false).CanCreateDirectories(true).PromptForSingleSelection()
 	if err != nil && !isCancel(err) {
 		return "", err
