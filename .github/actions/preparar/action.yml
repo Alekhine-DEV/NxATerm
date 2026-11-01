@@ -40,6 +40,8 @@ runs:
       shell: bash
       run: |
         cp -r overlay/. app/nxaterm/
+        printf 'package main\n\n// appVersion vem do arquivo VERSION do repositório.\nconst appVersion = "%s"\n' "$(tr -d '[:space:]' < VERSION)" > app/nxaterm/version.go
+        cat app/nxaterm/version.go
         rm -f app/nxaterm/greetservice.go app/nxaterm/frontend/src/main.ts
         base64 -d app/nxaterm/icon/appicon.png.b64 > app/nxaterm/build/appicon.png
         rm -rf app/nxaterm/icon

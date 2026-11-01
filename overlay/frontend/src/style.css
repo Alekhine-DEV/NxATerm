@@ -602,3 +602,4 @@ input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid v
 .dot.err { background: var(--danger); }
 .dot.run { background: var(--accent); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
+.upd-notes { max-height: 240px; overflow: auto; background: var(--g-0e0e0e); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; font-size: 12px; white-space: pre-wrap; user-select: text; }

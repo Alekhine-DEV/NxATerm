@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"nxaterm/internal/applock"
 	"nxaterm/internal/netx"
@@ -40,6 +41,9 @@ type TermService struct {
 
 	xf   *xferState
 	lock *applock.Lock
+
+	quitting atomic.Bool // o usuário pediu para sair de verdade (não é só fechar a janela)
+	toggle   func()      // mostra ou esconde a janela principal
 }
 
 // NewTermService prepara a pasta de dados e carrega as sessões salvas.

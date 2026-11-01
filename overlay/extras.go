@@ -118,4 +118,15 @@ func (a *TermService) GenerateKey(comment, passphrase string) (KeyResult, error)
 // ---------------------------------------------------------------- app
 
 // Quit fecha o aplicativo.
-func (a *TermService) Quit() { a.app.Quit() }
+func (a *TermService) Quit() { a.quit() }
+
+// SetGlobalHotkey registra (ou, com texto vazio, remove) o atalho que mostra/esconde a janela. Só no Windows.
+func (a *TermService) SetGlobalHotkey(spec string) error {
+	return setGlobalHotkey(spec, a.toggleWindow)
+}
+
+func (a *TermService) toggleWindow() {
+	if a.toggle != nil {
+		a.toggle()
+	}
+}

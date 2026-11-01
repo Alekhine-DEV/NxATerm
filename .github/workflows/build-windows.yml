@@ -42,6 +42,9 @@ jobs:
       - name: Aplicar os arquivos do NxATerm por cima do projeto base
         run: |
           Copy-Item overlay\* app\nxaterm\ -Recurse -Force
+          $ver = (Get-Content VERSION -Raw).Trim()
+          Set-Content -Path app\nxaterm\version.go -Value "package main`n`nconst appVersion = `"$ver`"" -Encoding ascii
+          Get-Content app\nxaterm\version.go
           Remove-Item app\nxaterm\greetservice.go -ErrorAction SilentlyContinue
           Remove-Item app\nxaterm\frontend\src\main.ts -ErrorAction SilentlyContinue
           Get-ChildItem app\nxaterm -Recurse -File | Where-Object { $_.FullName -notmatch 'node_modules|\\build\\' } | Select-Object -ExpandProperty FullName

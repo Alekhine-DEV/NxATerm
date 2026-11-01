@@ -47,6 +47,11 @@ export const DEFAULTS = {
   uiOpacity: 0.9, // opacidade da interface com a janela transparente
   unicode11: true, // largura correta de emojis e caracteres largos
   webgl: false, // renderizador acelerado por GPU
+  tray: false, // ícone na bandeja do sistema (vale ao reabrir)
+  closeToTray: false, // fechar a janela só a esconde (vale ao reabrir)
+  globalHotkey: '', // Windows: atalho que mostra/esconde a janela
+  checkUpdates: true, // avisa de versão nova ao abrir
+  skipVersion: '',
   macroScope: 'all', // lista de macros: 'all' ou 'active' (só as da sessão ativa)
   history: [], // conexões recentes: [{ at, s: sessão }]
   workspaces: {}, // espaços de trabalho: { nome: { items: [sessão], layout } }
@@ -78,6 +83,9 @@ export async function loadSettings() {
   settings.uiOpacity = clampF(settings.uiOpacity, 0.4, 1, DEFAULTS.uiOpacity)
   for (const k of ['windowTransparent', 'webgl']) settings[k] = !!settings[k]
   for (const k of ['unicode11', 'inlineImages', 'zmodem']) settings[k] = settings[k] !== false
+  for (const k of ['tray', 'closeToTray']) settings[k] = !!settings[k]
+  settings.checkUpdates = settings.checkUpdates !== false
+  for (const k of ['globalHotkey', 'skipVersion']) if (typeof settings[k] !== 'string') settings[k] = ''
   if (!['all', 'active'].includes(settings.macroScope)) settings.macroScope = 'all'
   settings.history = Array.isArray(settings.history)
     ? settings.history.filter((e) => e && typeof e.at === 'number' && e.s && typeof e.s === 'object').slice(0, 50) : []

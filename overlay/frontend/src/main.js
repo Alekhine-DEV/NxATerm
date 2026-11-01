@@ -24,6 +24,7 @@ import { initConnect } from './connect.js'
 import { attachHighlight } from './highlight.js'
 import { createZmodem } from './zmodemfx.js'
 import { batchDialog } from './batch.js'
+import { checkUpdates } from './updates.js'
 import { initFiles, renderSide, buildFileTab } from './files.js'
 import { TYPE_INFO, typeOf, hasFiles, hasSSH, hasTerminal, sessionSummary, isWindows } from './sessiontypes.js'
 
@@ -140,7 +141,8 @@ const MENUS = {
     { label: 'Esquecer senhas memorizadas', disabled: !memo.size, onclick: () => { memo.clear(); toast('Senhas esquecidas') } },
   ],
   Sobre: () => [
-    { label: 'Sobre o NxATerm', icon: 'help', onclick: aboutDialog },
+    { label: 'Verificar atualizações...', icon: 'refresh', onclick: () => checkUpdates({ silent: false, openURL }) },
+    { label: 'Sobre o NxATerm', icon: 'help', onclick: () => aboutDialog(() => checkUpdates({ silent: false, openURL })) },
   ],
 }
 
@@ -1399,6 +1401,7 @@ async function init() {
   await initFiles({ getTab: (id) => tabs.get(id), activeTab, allTabs, reconnectTab, copyText })
   await Promise.allSettled([refreshSessions(), refreshMacros()])
   await initConnect(openSession)
+  if (settings.checkUpdates) setTimeout(() => checkUpdates({ silent: true, openURL }), 6000)
 }
 
 init().catch((e) => toast(cleanErr(e), true))

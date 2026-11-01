@@ -18,8 +18,11 @@ var assets embed.FS
 
 // startupSettings são as configurações que precisam valer antes da janela existir.
 type startupSettings struct {
-	MultiInstance     bool `json:"multiInstance"`
-	WindowTransparent bool `json:"windowTransparent"`
+	MultiInstance     bool   `json:"multiInstance"`
+	WindowTransparent bool   `json:"windowTransparent"`
+	Tray              bool   `json:"tray"`         // ícone na bandeja do sistema
+	CloseToTray       bool   `json:"closeToTray"`  // fechar a janela só esconde
+	GlobalHotkey      string `json:"globalHotkey"` // Windows: mostra/esconde a janela
 }
 
 func readStartupSettings() startupSettings {
@@ -94,6 +97,30 @@ func main() {
 		win.Show()
 		win.Restore()
 		win.Focus()
+	}
+	svc.toggle = func() {
+		if win.IsVisible() && !win.IsMinimised() {
+			win.Hide()
+			return
+		}
+		svc.showWindow()
+	}
+
+	if cfg.Tray {
+		svc.setupTray()
+		if cfg.CloseToTray {
+			win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+				if !svc.quitting.Load() {
+					e.Cancel()
+					win.Hide()
+				}
+			})
+		}
+	}
+	if cfg.GlobalHotkey != "" {
+		if err := svc.SetGlobalHotkey(cfg.GlobalHotkey); err != nil {
+			log.Printf("atalho global: %v", err)
+		}
 	}
 
 	if err := app.Run(); err != nil {

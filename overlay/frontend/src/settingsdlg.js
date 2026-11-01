@@ -6,13 +6,14 @@ import {
   BUILTIN_THEMES, ANSI_KEYS, THEME_KEYS, cleanTheme, themeFromITerm, themeFromJSON, themeToJSON,
 } from './termthemes.js'
 import { lockDialog } from './organize.js'
+import { isWindows } from './sessiontypes.js'
 import {
   UI_BUILTIN, uiThemes, applyAppearance, previewUiTheme, setBackgroundData, hasBackground,
 } from './uitheme.js'
 
 const KEYS = [
   'font', 'fontSize', 'theme', 'cursorStyle', 'cursorBlink', 'scrollback', 'copyOnSelect', 'rightClick',
-  'autoSftp', 'monitoring', 'followFolder', 'termSync', 'proxy', 'editor', 'multiInstance',
+  'autoSftp', 'monitoring', 'followFolder', 'termSync', 'proxy', 'editor', 'multiInstance', 'tray', 'closeToTray', 'globalHotkey', 'checkUpdates',
   'uiTheme', 'uiThemes', 'customThemes', 'customCss', 'bgOpacity', 'bgBlur', 'termOpacity',
   'windowTransparent', 'uiOpacity', 'unicode11', 'webgl', 'inlineImages', 'zmodem', 'highlight',
 ]
@@ -250,6 +251,10 @@ function show(st) {
   // ---- Sistema
   panes.sys = [
     check('multiInstance', 'Permitir várias janelas do NxATerm'),
+    check('tray', 'Ícone na bandeja do sistema (ao reabrir o app)'),
+    check('closeToTray', 'Fechar a janela envia para a bandeja (ao reabrir o app)'),
+    isWindows ? field('Atalho global para mostrar/esconder', txt('globalHotkey', 'Nenhum (ex.: Ctrl+Alt+T)')) : null,
+    check('checkUpdates', 'Avisar de versão nova ao abrir'),
     h('div', { class: 'set-actions' },
       h('button', { onclick: () => lockDialog(() => show(st)) }, 'Senha de abertura...')),
     h('div', { class: 'set-actions' },
@@ -265,7 +270,7 @@ function show(st) {
       class: 'set-tab' + (st.tab === id ? ' active' : ''),
       onclick: () => { st.tab = id; show(st) },
     }, label)))
-  body.append(...panes[st.tab].flat(Infinity))
+  body.append(...panes[st.tab].flat(Infinity).filter(Boolean))
 
   const cancel = () => { applyAppearance(); closeModal() }
   openModal([
@@ -281,8 +286,11 @@ function show(st) {
           draft.proxy = String(draft.proxy).trim()
           draft.editor = String(draft.editor).trim()
           draft.highlight.rules = draft.highlight.rules.filter((r) => r.pattern)
+          const hotkeyChanged = isWindows && draft.globalHotkey.trim() !== settings.globalHotkey
+          draft.globalHotkey = String(draft.globalHotkey).trim()
           for (const k of KEYS) settings[k] = draft[k]
           saveSettings()
+          if (hotkeyChanged) Api.SetGlobalHotkey(settings.globalHotkey).catch((e) => toast(cleanErr(e), true))
           applyAppearance()
           closeModal()
           st.onApply()

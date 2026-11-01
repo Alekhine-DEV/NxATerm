@@ -351,14 +351,19 @@ export function keygenDialog() {
 }
 
 // ------------------------------------------------------------------ ajuda
-export function aboutDialog() {
+export function aboutDialog(onCheckUpdates) {
+  const ver = h('div', { class: 'about-by' }, '')
+  Api.GetAppInfo().then((i) => { ver.textContent = `Versão ${i.version} · ${i.os}/${i.arch}` }).catch(() => {})
   openModal([
     h('div', { class: 'about' },
       h('div', { class: 'about-logo' }, icon('terminal', 30)),
       h('div', { class: 'about-name' }, 'NxATerm'),
+      ver,
       h('div', { class: 'about-by' }, 'Criado por ', h('b', {}, 'Alexandre Garcia'), ' (alekhine-dev)'),
       h('div', { class: 'about-stack' }, ['Go', 'Wails v3', 'xterm.js', 'Vite'].map((t) => h('span', { class: 'chip' }, t)))),
-    h('div', { class: 'btns center' }, h('button', { class: 'primary', onclick: closeModal }, 'Fechar')),
+    h('div', { class: 'btns center' },
+      onCheckUpdates ? h('button', { onclick: () => { closeModal(); onCheckUpdates() } }, 'Verificar atualizações') : null,
+      h('button', { class: 'primary', onclick: closeModal }, 'Fechar')),
   ], 'about-modal')
 }
 
