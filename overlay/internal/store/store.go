@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -49,6 +50,18 @@ type Session struct {
 	// Shell local e WSL
 	Shell  string `json:"shell"`  // programa do shell local (vazio = padrão do sistema)
 	Distro string `json:"distro"` // distribuição do WSL (vazio = a padrão)
+
+	// Conexão (SSH, SFTP e Telnet)
+	Proxy        string `json:"proxy,omitempty"`        // vazio = o proxy global; "none" = direto; ou socks5://host:porta, http://host:porta
+	ProxyCommand string `json:"proxyCommand,omitempty"` // comando cuja entrada/saída vira a conexão (%h %p %r)
+	JumpHost     string `json:"jumpHost,omitempty"`     // ID de outra sessão SSH usada como servidor de salto
+
+	// Terminal (todos os tipos com terminal)
+	Encoding string `json:"encoding,omitempty"` // vazio = UTF-8
+	TermType string `json:"termType,omitempty"` // vazio = xterm-256color
+	StartDir string `json:"startDir,omitempty"` // pasta inicial
+	Env      string `json:"env,omitempty"`      // variáveis, uma NOME=valor por linha
+	X11      bool   `json:"x11,omitempty"`      // encaminhar o X11 (SSH)
 }
 
 // Store mantém a lista de sessões em memória e no disco.
@@ -100,6 +113,18 @@ func (s *Store) List() []Session {
 	return out
 }
 
+// Get devolve a sessão com o ID informado.
+func (s *Store) Get(id string) (Session, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, x := range s.sessions {
+		if x.ID == id {
+			return x, true
+		}
+	}
+	return Session{}, false
+}
+
 // Normalize valida e preenche os valores padrão de uma sessão.
 func Normalize(in Session) (Session, error) {
 	in.Host = strings.TrimSpace(in.Host)
@@ -120,7 +145,7 @@ func Normalize(in Session) (Session, error) {
 			in.Name = in.User + "@" + in.Host
 		}
 		switch in.AuthMethod {
-		case "password", "key":
+		case "password", "key", "agent":
 		case "":
 			in.AuthMethod = "password"
 		default:
@@ -129,12 +154,16 @@ func Normalize(in Session) (Session, error) {
 		if in.AuthMethod == "key" && strings.TrimSpace(in.KeyPath) == "" {
 			return in, errors.New("informe o caminho da chave privada")
 		}
+		if in.JumpHost == in.ID && in.ID != "" {
+			return in, errors.New("o servidor de salto não pode ser a própria sessão")
+		}
 
 	case TypeTelnet:
 		if err := normalizeRemote(&in, 23, false); err != nil {
 			return in, err
 		}
 		in.User, in.AuthMethod, in.KeyPath = "", "password", ""
+		in.X11 = false
 		if in.Name == "" {
 			in.Name = in.Host
 		}
@@ -171,6 +200,8 @@ func Normalize(in Session) (Session, error) {
 			return in, fmt.Errorf("bits de parada inválido: %q", in.StopBits)
 		}
 		in.Host, in.User, in.Port = "", "", 0
+		in.clearConnection()
+		in.TermType, in.StartDir, in.Env = "", "", ""
 		if in.Name == "" {
 			in.Name = fmt.Sprintf("%s (%d)", in.SerialPort, in.BaudRate)
 		}
@@ -178,6 +209,7 @@ func Normalize(in Session) (Session, error) {
 	case TypeShell:
 		in.Shell = strings.TrimSpace(in.Shell)
 		in.Host, in.User, in.Port = "", "", 0
+		in.clearConnection()
 		if in.Name == "" {
 			in.Name = "Shell local"
 		}
@@ -185,6 +217,7 @@ func Normalize(in Session) (Session, error) {
 	case TypeWSL:
 		in.Distro = strings.TrimSpace(in.Distro)
 		in.Host, in.User, in.Port = "", "", 0
+		in.clearConnection()
 		if in.Name == "" {
 			in.Name = "WSL"
 			if in.Distro != "" {
@@ -195,7 +228,64 @@ func Normalize(in Session) (Session, error) {
 	default:
 		return in, fmt.Errorf("tipo de sessão inválido: %q", in.Type)
 	}
+
+	in.Proxy = strings.TrimSpace(in.Proxy)
+	in.ProxyCommand = strings.TrimSpace(in.ProxyCommand)
+	in.Encoding = strings.ToLower(strings.TrimSpace(in.Encoding))
+	if in.Encoding == "utf-8" || in.Encoding == "utf8" {
+		in.Encoding = ""
+	}
+	in.TermType = strings.TrimSpace(in.TermType)
+	if in.TermType != "" && !termTypeRe.MatchString(in.TermType) {
+		return in, fmt.Errorf("tipo de terminal inválido: %q", in.TermType)
+	}
+	in.StartDir = strings.TrimSpace(in.StartDir)
+	env, err := CleanEnv(in.Env)
+	if err != nil {
+		return in, err
+	}
+	in.Env = env
+	if in.Type != TypeSSH {
+		in.X11 = false
+	}
 	return in, nil
+}
+
+var termTypeRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
+var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// clearConnection limpa o que só faz sentido para conexões de rede.
+func (s *Session) clearConnection() {
+	s.Proxy, s.ProxyCommand, s.JumpHost, s.X11 = "", "", "", false
+	s.AuthMethod, s.KeyPath = "password", ""
+}
+
+// CleanEnv confere as linhas NOME=valor e devolve o texto normalizado.
+func CleanEnv(text string) (string, error) {
+	var out []string
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r", ""), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		k, _, ok := strings.Cut(line, "=")
+		if !ok || !envNameRe.MatchString(strings.TrimSpace(k)) {
+			return "", fmt.Errorf("variável inválida: %q (use NOME=valor)", line)
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n"), nil
+}
+
+// EnvPairs devolve as variáveis já separadas.
+func EnvPairs(text string) [][2]string {
+	var out [][2]string
+	for _, line := range strings.Split(text, "\n") {
+		if k, v, ok := strings.Cut(strings.TrimSpace(line), "="); ok && envNameRe.MatchString(k) {
+			out = append(out, [2]string{k, v})
+		}
+	}
+	return out
 }
 
 // normalizeRemote valida host, porta e (opcionalmente) usuário das sessões de rede.

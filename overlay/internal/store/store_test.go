@@ -437,3 +437,38 @@ func TestPuTTYSession(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeConnectionOptions(t *testing.T) {
+	s, err := Normalize(Session{Type: "ssh", Host: "h", User: "u", AuthMethod: "agent", Encoding: "UTF-8", TermType: "vt100",
+		Env: " LANG=pt_BR.UTF-8 \r\n\n FOO=bar=baz ", X11: true, Proxy: " socks5://p:1080 "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.AuthMethod != "agent" || s.Encoding != "" || s.TermType != "vt100" || !s.X11 || s.Proxy != "socks5://p:1080" {
+		t.Fatalf("%+v", s)
+	}
+	if s.Env != "LANG=pt_BR.UTF-8\nFOO=bar=baz" {
+		t.Fatalf("env = %q", s.Env)
+	}
+	pairs := EnvPairs(s.Env)
+	if len(pairs) != 2 || pairs[1] != [2]string{"FOO", "bar=baz"} {
+		t.Fatalf("%v", pairs)
+	}
+	if _, err := Normalize(Session{Type: "ssh", Host: "h", User: "u", Env: "1X=2"}); err == nil {
+		t.Error("nome de variável inválido deveria falhar")
+	}
+	if _, err := Normalize(Session{Type: "ssh", Host: "h", User: "u", TermType: "x y"}); err == nil {
+		t.Error("TERM inválido deveria falhar")
+	}
+	if _, err := Normalize(Session{ID: "a", Type: "ssh", Host: "h", User: "u", JumpHost: "a"}); err == nil {
+		t.Error("salto para si mesmo deveria falhar")
+	}
+	tn, _ := Normalize(Session{Type: "telnet", Host: "h", X11: true, Proxy: "none"})
+	if tn.X11 || tn.Proxy != "none" {
+		t.Fatalf("%+v", tn)
+	}
+	sh, _ := Normalize(Session{Type: "shell", Proxy: "socks5://x:1", JumpHost: "z", Env: "A=1", StartDir: " /tmp "})
+	if sh.Proxy != "" || sh.JumpHost != "" || sh.Env != "A=1" || sh.StartDir != "/tmp" {
+		t.Fatalf("%+v", sh)
+	}
+}

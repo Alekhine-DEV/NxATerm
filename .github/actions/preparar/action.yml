@@ -1,0 +1,71 @@
+name: Preparar o projeto (Linux)
+description: Instala as ferramentas, cria o projeto base do Wails, aplica os arquivos do NxATerm e gera os bindings.
+
+runs:
+  using: composite
+  steps:
+    - name: Instalar as bibliotecas de compilação
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev xvfb dbus-x11 desktop-file-utils
+
+    - name: Instalar Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.27.3'
+        cache: false
+
+    - name: Instalar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '26.13.0'
+
+    - name: Instalar o CLI do Wails v3
+      shell: bash
+      run: |
+        go version
+        node --version
+        go install -tags gtk3 github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    - name: Criar o projeto base (wails3 init)
+      shell: bash
+      run: |
+        export PATH="$(go env GOPATH)/bin:$PATH"
+        wails3 version
+        wails3 init -n nxaterm -t vanilla -mod nxaterm -d app -q -s
+
+    - name: Aplicar os arquivos do NxATerm por cima do projeto base
+      shell: bash
+      run: |
+        cp -r overlay/. app/nxaterm/
+        rm -f app/nxaterm/greetservice.go app/nxaterm/frontend/src/main.ts
+        base64 -d app/nxaterm/icon/appicon.png.b64 > app/nxaterm/build/appicon.png
+        rm -rf app/nxaterm/icon
+        file app/nxaterm/build/appicon.png
+
+    - name: Dependências Go (versões fixas)
+      shell: bash
+      working-directory: app/nxaterm
+      run: |
+        go get golang.org/x/crypto@v0.58.0 golang.org/x/sys@v0.49.0 golang.org/x/text@v0.43.0 github.com/pkg/sftp@v1.13.12 go.bug.st/serial@v1.8.0 github.com/aymanbagabas/go-pty@v0.2.3
+        go mod tidy
+        go mod verify
+
+    - name: Dependências do frontend (versões fixas)
+      shell: bash
+      working-directory: app/nxaterm/frontend
+      run: |
+        npm install
+        npm install --save-exact @xterm/xterm@6.0.0 @xterm/addon-fit@0.11.0 @xterm/addon-search@0.16.0 @xterm/addon-web-links@0.12.0 @wailsio/runtime@3.0.0
+        npm install -D --save-exact vite@8.3.5
+        npm ls --depth=0
+        npm audit signatures
+        npm pkg set 'scripts.build=vite build'
+        npm pkg set 'scripts.build:dev=vite build'
+
+    - name: Gerar os bindings Go para JS
+      shell: bash
+      working-directory: app/nxaterm
+      run: wails3 generate bindings

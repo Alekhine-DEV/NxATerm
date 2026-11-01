@@ -1,0 +1,41 @@
+name: Verificar
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+env:
+  GOFLAGS: -tags=gtk3
+
+jobs:
+  verificar:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/preparar
+
+      - name: Compilar o frontend
+        working-directory: app/nxaterm/frontend
+        run: npm run build
+
+      - name: Testes dos pacotes internos
+        working-directory: app/nxaterm
+        run: go test ./internal/...
+
+      - name: Análise do código (Linux)
+        working-directory: app/nxaterm
+        run: go vet ./...
+
+      - name: Análise do código (Windows)
+        working-directory: app/nxaterm
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+        run: go vet ./...
+
+      - name: Testes do pacote principal
+        working-directory: app/nxaterm
+        run: go test .

@@ -13,6 +13,8 @@ import {
 import { settings, loadSettings, saveSettings, termOptions } from './settings.js'
 import { editSession, editMacro, tunnelDialog, keygenDialog, settingsDialog, aboutDialog, shortcutsDialog } from './dialogs.js'
 import { keyOf, actionFor, capture } from './keys.js'
+import { memo, memoKey } from './memo.js'
+import { initConnect } from './connect.js'
 import { TYPE_INFO, typeOf, hasFiles, sessionSummary, isWindows } from './sessiontypes.js'
 
 const Events = Runtime.Events
@@ -619,9 +621,6 @@ function rememberRecent(s) {
 }
 
 // ------------------------------------------------------------------ abas / terminal
-// Senhas memorizadas: só na memória desta execução. Nada vai para disco, e tudo some ao fechar o NxATerm.
-const memo = new Map()
-const memoKey = (kind, s) => `${kind}:${s.user}@${s.host}:${s.port}`
 
 async function askSecret(title, label, key) {
   const r = await promptBox({ title, label, secret: true, ok: 'Conectar', remember: 'Memorizar até fechar o NxATerm' })
@@ -1444,6 +1443,7 @@ async function init() {
   activate('home')
 
   await Promise.allSettled([refreshSessions(), refreshMacros()])
+  await initConnect(openSession)
 }
 
 init().catch((e) => toast(cleanErr(e), true))

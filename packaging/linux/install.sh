@@ -22,7 +22,7 @@ check_webkit || echo "(a instalação continua; instale o WebKitGTK antes de abr
 install -Dm755 "$DIR/nxaterm" "$BIN"
 install -Dm644 "$DIR/nxaterm.png" "$ICON"
 mkdir -p "$(dirname "$APP")"
-sed "s|^Exec=.*|Exec=$BIN|" "$DIR/nxaterm.desktop" > "$APP"
+sed "s|^Exec=.*|Exec=$BIN %U|" "$DIR/nxaterm.desktop" > "$APP"
 chmod 644 "$APP"
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$PREFIX/share/applications" 2>/dev/null || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t -f "$PREFIX/share/icons/hicolor" 2>/dev/null || true

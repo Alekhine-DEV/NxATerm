@@ -4,8 +4,10 @@ package main
 
 import (
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
+	"strings"
 
 	"nxaterm/internal/store"
 
@@ -94,4 +96,43 @@ func wslDistros() []string {
 		return append([]string{first}, rest...)
 	}
 	return rest
+}
+
+// linkHandlerRegistered confere se ssh:// aponta para este executável.
+func linkHandlerRegistered() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Classes\ssh\shell\open\command`, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	defer k.Close()
+	v, _, err := k.GetStringValue("")
+	return err == nil && strings.Contains(strings.ToLower(v), strings.ToLower(exe))
+}
+
+// registerLinkHandler grava, só para o usuário atual, o programa que abre ssh:// e telnet://.
+func registerLinkHandler(exe string) error {
+	for _, scheme := range []string{"ssh", "telnet"} {
+		base := `Software\Classes\` + scheme
+		k, _, err := registry.CreateKey(registry.CURRENT_USER, base, registry.ALL_ACCESS)
+		if err != nil {
+			return err
+		}
+		k.SetStringValue("", "URL:"+scheme)
+		k.SetStringValue("URL Protocol", "")
+		k.Close()
+		cmd, _, err := registry.CreateKey(registry.CURRENT_USER, base+`\shell\open\command`, registry.ALL_ACCESS)
+		if err != nil {
+			return err
+		}
+		err = cmd.SetStringValue("", `"`+exe+`" "%1"`)
+		cmd.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -4,20 +4,19 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"time"
 
 	"nxaterm/internal/store"
 	"nxaterm/internal/telnet"
 )
 
 // startTelnet abre uma conexão Telnet. O login é feito no próprio terminal.
-func startTelnet(s store.Session, cols, rows int) (*termSession, error) {
+func (a *TermService) startTelnet(s store.Session, cols, rows int) (*termSession, error) {
 	addr := net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
-	raw, err := net.DialTimeout("tcp", addr, 15*time.Second)
+	raw, err := a.dialTCP(s, addr, 0)
 	if err != nil {
 		return nil, fmt.Errorf("falha ao conectar em %s: %w", addr, err)
 	}
-	conn := telnet.NewConn(raw, "xterm-256color", cols, rows)
+	conn := telnet.NewConn(raw, termTypeOf(s), cols, rows)
 	return &termSession{
 		w:       conn,
 		out:     conn,

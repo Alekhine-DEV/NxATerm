@@ -56,7 +56,7 @@ func defaultShell() string {
 }
 
 // startPty roda um programa dentro de um pseudo-terminal (ConPTY no Windows).
-func startPty(argv []string, dir string, cols, rows int) (*termSession, error) {
+func startPty(argv []string, dir string, cols, rows int, extraEnv []string) (*termSession, error) {
 	if len(argv) == 0 {
 		return nil, errors.New("comando vazio")
 	}
@@ -76,8 +76,9 @@ func startPty(argv []string, dir string, cols, rows int) (*termSession, error) {
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	if runtime.GOOS != "windows" {
-		cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+		cmd.Env = append(cmd.Env, "TERM="+defaultTerm)
 	}
+	cmd.Env = append(cmd.Env, extraEnv...) // as últimas valem: sobrepõem as anteriores
 	if err := cmd.Start(); err != nil {
 		p.Close()
 		return nil, fmt.Errorf("não foi possível iniciar %s: %w", argv[0], err)
@@ -117,7 +118,27 @@ func startShell(s store.Session, cols, rows int) (*termSession, error) {
 	if len(argv) == 0 {
 		argv = []string{defaultShell()}
 	}
-	return startPty(argv, homeDir(), cols, rows)
+	dir := homeDir()
+	if s.StartDir != "" {
+		if st, err := os.Stat(s.StartDir); err == nil && st.IsDir() {
+			dir = s.StartDir
+		} else {
+			return nil, fmt.Errorf("a pasta inicial não existe: %s", s.StartDir)
+		}
+	}
+	return startPty(argv, dir, cols, rows, localEnv(s))
+}
+
+// localEnv junta TERM e as variáveis da sessão para o processo local.
+func localEnv(s store.Session) []string {
+	var env []string
+	if s.TermType != "" {
+		env = append(env, "TERM="+s.TermType)
+	}
+	for _, kv := range store.EnvPairs(s.Env) {
+		env = append(env, kv[0]+"="+kv[1])
+	}
+	return env
 }
 
 // startWSL abre a distribuição Linux do WSL, começando na pasta pessoal dela.
@@ -129,8 +150,12 @@ func startWSL(s store.Session, cols, rows int) (*termSession, error) {
 	if s.Distro != "" {
 		argv = append(argv, "-d", s.Distro)
 	}
-	argv = append(argv, "--cd", "~")
-	return startPty(argv, homeDir(), cols, rows)
+	start := "~"
+	if s.StartDir != "" {
+		start = s.StartDir
+	}
+	argv = append(argv, "--cd", start)
+	return startPty(argv, homeDir(), cols, rows, localEnv(s))
 }
 
 // userDistros tira da lista as distros internas que Docker Desktop e Rancher Desktop

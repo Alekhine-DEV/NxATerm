@@ -178,9 +178,9 @@ func (a *TermService) stopAllTunnels() {
 }
 
 // pipe copia nos dois sentidos e fecha tudo quando um lado terminar.
-func pipe(a, b net.Conn) {
+func pipe(a, b io.ReadWriteCloser) {
 	done := make(chan struct{}, 2)
-	cp := func(dst, src net.Conn) {
+	cp := func(dst, src io.ReadWriteCloser) {
 		io.Copy(dst, src)
 		done <- struct{}{}
 	}

@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -101,45 +100,6 @@ func (t *termSession) sftpClient() (*sftp.Client, error) {
 	return c, nil
 }
 
-// authMethods monta os métodos de autenticação de acordo com o perfil.
-// secret é a senha (AuthMethod "password") ou a senha da chave (AuthMethod "key").
-func authMethods(s store.Session, secret string) ([]ssh.AuthMethod, error) {
-	switch s.AuthMethod {
-	case "key":
-		pem, err := os.ReadFile(s.KeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("não consegui ler a chave %s: %w", s.KeyPath, err)
-		}
-		var signer ssh.Signer
-		if secret == "" {
-			signer, err = ssh.ParsePrivateKey(pem)
-		} else {
-			signer, err = ssh.ParsePrivateKeyWithPassphrase(pem, []byte(secret))
-		}
-		if err != nil {
-			var missing *ssh.PassphraseMissingError
-			if errors.As(err, &missing) {
-				return nil, errors.New(errPassphraseRequired)
-			}
-			return nil, fmt.Errorf("chave inválida ou senha da chave incorreta: %w", err)
-		}
-		return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
-
-	default: // password
-		answer := func(user, instruction string, questions []string, echos []bool) ([]string, error) {
-			out := make([]string, len(questions))
-			for i := range out {
-				out[i] = secret
-			}
-			return out, nil
-		}
-		return []ssh.AuthMethod{
-			ssh.Password(secret),
-			ssh.KeyboardInteractive(answer),
-		}, nil
-	}
-}
-
 // hostKeyCallback implementa "aceitar na primeira vez" (como o ssh com
 // StrictHostKeyChecking=accept-new): hosts novos são gravados no known_hosts
 // do app; se a chave de um host conhecido mudar, a conexão é recusada.
@@ -182,20 +142,9 @@ func (a *TermService) hostKeyCallback() ssh.HostKeyCallback {
 // startSSH conecta por SSH. Com withShell=false (sessão SFTP) só a conexão é
 // aberta, sem terminal.
 func (a *TermService) startSSH(s store.Session, secret string, cols, rows int, withShell bool) (*termSession, error) {
-	methods, err := authMethods(s, secret)
+	client, err := a.connectSSH(s, secret, 0)
 	if err != nil {
 		return nil, err
-	}
-	cfg := &ssh.ClientConfig{
-		User:            s.User,
-		Auth:            methods,
-		HostKeyCallback: a.hostKeyCallback(),
-		Timeout:         15 * time.Second,
-	}
-	addr := net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
-	client, err := ssh.Dial("tcp", addr, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("falha ao conectar em %s: %w", addr, err)
 	}
 	t := &termSession{client: client, enter: "\n"}
 	if !withShell {
@@ -208,8 +157,14 @@ func (a *TermService) startSSH(s store.Session, secret string, cols, rows int, w
 		client.Close()
 		return nil, err
 	}
+	for _, kv := range store.EnvPairs(s.Env) {
+		sess.Setenv(kv[0], kv[1]) // muitos servidores recusam; tudo bem
+	}
+	if s.X11 {
+		setupX11(client, sess)
+	}
 	modes := ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 14400, ssh.TTY_OP_OSPEED: 14400}
-	if err := sess.RequestPty("xterm-256color", rows, cols, modes); err != nil {
+	if err := sess.RequestPty(termTypeOf(s), rows, cols, modes); err != nil {
 		client.Close()
 		return nil, err
 	}
@@ -272,7 +227,7 @@ func (a *TermService) Connect(id string, s store.Session, secret string, cols, r
 	case store.TypeSFTP:
 		t, err = a.startSSH(s, secret, cols, rows, false)
 	case store.TypeTelnet:
-		t, err = startTelnet(s, cols, rows)
+		t, err = a.startTelnet(s, cols, rows)
 	case store.TypeSerial:
 		t, err = startSerial(s)
 	case store.TypeShell:
@@ -294,9 +249,14 @@ func (a *TermService) Connect(id string, s store.Session, secret string, cols, r
 	a.terms[id] = t
 	a.termMu.Unlock()
 
-	if s.StartupCommand != "" && t.w != nil {
-		io.WriteString(t.w, s.StartupCommand+t.enter)
+	if err := wrapEncoding(t, s.Encoding); err != nil {
+		t.close()
+		a.termMu.Lock()
+		delete(a.terms, id)
+		a.termMu.Unlock()
+		return err
 	}
+	go runStartup(t, s)
 
 	// saída do terminal -> frontend
 	if t.out != nil {

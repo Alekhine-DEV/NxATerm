@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
+	"nxaterm/internal/netx"
 	"nxaterm/internal/store"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -15,7 +18,8 @@ import (
 // Wails v3, então todos os métodos exportados viram funções no frontend
 // (bindings gerados por `wails3 generate bindings`).
 type TermService struct {
-	app *application.App
+	app        *application.App
+	showWindow func() // traz a janela principal para a frente
 
 	store      *store.Store
 	knownHosts string
@@ -29,6 +33,9 @@ type TermService struct {
 
 	tunMu   sync.Mutex
 	tunnels map[string]*tunnel
+
+	promptMu sync.Mutex
+	prompts  map[string]chan promptAnswer
 }
 
 // NewTermService prepara a pasta de dados e carrega as sessões salvas.
@@ -53,6 +60,7 @@ func NewTermService(app *application.App) (*TermService, error) {
 		macros:       ms,
 		settingsPath: filepath.Join(dir, "settings.json"),
 		tunnels:      map[string]*tunnel{},
+		prompts:      map[string]chan promptAnswer{},
 	}, nil
 }
 
@@ -71,7 +79,17 @@ func (a *TermService) ServiceShutdown() error {
 func (a *TermService) ListSessions() []store.Session { return a.store.List() }
 
 // SaveSession cria ou atualiza uma sessão.
-func (a *TermService) SaveSession(s store.Session) (store.Session, error) { return a.store.Save(s) }
+func (a *TermService) SaveSession(s store.Session) (store.Session, error) {
+	if !a.CheckEncoding(s.Encoding) {
+		return store.Session{}, fmt.Errorf("codificação desconhecida: %q", s.Encoding)
+	}
+	if px := strings.TrimSpace(s.Proxy); px != "" && px != "none" {
+		if _, err := netx.ParseProxy(px); err != nil {
+			return store.Session{}, err
+		}
+	}
+	return a.store.Save(s)
+}
 
 // DeleteSession remove uma sessão salva.
 func (a *TermService) DeleteSession(id string) error { return a.store.Delete(id) }

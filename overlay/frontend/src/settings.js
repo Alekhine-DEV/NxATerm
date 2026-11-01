@@ -46,6 +46,8 @@ export const DEFAULTS = {
   autoSftp: true,
   recent: [], // ids das últimas sessões abertas (tela inicial)
   keys: {}, // atalhos personalizados: { idDaAção: 'Ctrl+Shift+T' }
+  proxy: '', // proxy geral das conexões (socks5://host:porta ou http://host:porta)
+  multiInstance: false, // várias janelas do app ao mesmo tempo (vale ao reabrir)
 }
 
 export const settings = { ...DEFAULTS }
@@ -64,6 +66,8 @@ export async function loadSettings() {
   if (!['block', 'bar', 'underline'].includes(settings.cursorStyle)) settings.cursorStyle = 'block'
   if (!['paste', 'menu'].includes(settings.rightClick)) settings.rightClick = 'paste'
   if (!Array.isArray(settings.recent)) settings.recent = []
+  if (typeof settings.proxy !== 'string') settings.proxy = ''
+  settings.multiInstance = !!settings.multiInstance
   if (!settings.keys || typeof settings.keys !== 'object' || Array.isArray(settings.keys)) settings.keys = {}
 }
 

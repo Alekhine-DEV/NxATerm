@@ -7,13 +7,16 @@ import { TYPE_INFO, typeOf, availableTypes } from './sessiontypes.js'
 const field = (label, el) => [h('label', {}, label), el]
 
 // ------------------------------------------------------------------ sessão
+const ENCODINGS = ['utf-8', 'windows-1252', 'iso-8859-2', 'iso-8859-15', 'windows-1251', 'koi8-r', 'gbk', 'gb18030', 'big5', 'shift_jis', 'euc-jp', 'euc-kr']
+const TERMS = ['xterm-256color', 'xterm', 'vt100', 'vt220', 'linux', 'ansi']
 const BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
 
 export function editSession(existing, onChange, preset) {
   const s = {
     type: 'ssh', name: '', folder: '', host: '', port: 0, user: '', authMethod: 'password', keyPath: '',
     startupCommand: '', notes: '', serialPort: '', baudRate: 9600, dataBits: 8, parity: 'none', stopBits: '1',
-    shell: '', distro: '', ...(existing || preset || {}),
+    shell: '', distro: '', proxy: '', proxyCommand: '', jumpHost: '', encoding: '', termType: '',
+    startDir: '', env: '', x11: false, ...(existing || preset || {}),
   }
   let type = typeOf(s)
 
@@ -26,9 +29,10 @@ export function editSession(existing, onChange, preset) {
     user: h('input', { type: 'text', value: s.user, spellcheck: 'false' }),
     auth: h('select', {},
       opt('password', 'Senha', s.authMethod === 'password'),
-      opt('key', 'Chave privada', s.authMethod === 'key')),
+      opt('key', 'Chave privada', s.authMethod === 'key'),
+      opt('agent', 'Agente SSH', s.authMethod === 'agent')),
     keyPath: h('input', { type: 'text', value: s.keyPath, spellcheck: 'false' }),
-    startup: h('input', { type: 'text', value: s.startupCommand, spellcheck: 'false' }),
+    startup: h('textarea', { rows: 2, spellcheck: 'false' }, s.startupCommand),
     serialPort: h('input', { type: 'text', value: s.serialPort, spellcheck: 'false' }),
     baud: h('input', { type: 'number', value: s.baudRate || 9600, min: 50 }),
     dataBits: h('select', {}, [8, 7, 6, 5].map((n) => opt(String(n), String(n), (s.dataBits || 8) === n))),
@@ -37,13 +41,35 @@ export function editSession(existing, onChange, preset) {
     stopBits: h('select', {}, [['1', '1'], ['1.5', '1,5'], ['2', '2']].map(([v, l]) => opt(v, l, (s.stopBits || '1') === v))),
     shell: h('input', { type: 'text', value: s.shell, spellcheck: 'false', placeholder: 'PowerShell' }),
     distro: h('input', { type: 'text', value: s.distro, spellcheck: 'false', placeholder: 'Padrão' }),
+    proxySel: h('select', {},
+      opt('', 'Proxy geral', !s.proxy),
+      opt('none', 'Sem proxy', s.proxy === 'none'),
+      opt('custom', 'Outro...', !!s.proxy && s.proxy !== 'none')),
+    proxy: h('input', { type: 'text', value: s.proxy && s.proxy !== 'none' ? s.proxy : '', spellcheck: 'false', placeholder: 'socks5://host:1080' }),
+    jump: h('select', {}, opt('', 'Nenhum', !s.jumpHost)),
+    proxyCmd: h('input', { type: 'text', value: s.proxyCommand, spellcheck: 'false', placeholder: 'ssh -W %h:%p bastion' }),
+    encoding: h('input', { type: 'text', value: s.encoding, spellcheck: 'false', placeholder: 'utf-8' }),
+    termType: h('input', { type: 'text', value: s.termType, spellcheck: 'false', placeholder: 'xterm-256color' }),
+    startDir: h('input', { type: 'text', value: s.startDir, spellcheck: 'false' }),
+    env: h('textarea', { rows: 2, spellcheck: 'false', placeholder: 'NOME=valor' }, s.env),
+    x11: h('input', { type: 'checkbox', checked: !!s.x11 }),
   }
   const cb = {
     serial: combo(f.serialPort, () => Api.SerialPorts()),
     baud: combo(f.baud, () => BAUDS),
     shell: combo(f.shell, () => Api.LocalShells()),
     distro: combo(f.distro, () => Api.WSLDistros()),
+    encoding: combo(f.encoding, () => ENCODINGS),
+    termType: combo(f.termType, () => TERMS),
   }
+  f.proxySel.addEventListener('change', () => f.proxy.classList.toggle('hidden', f.proxySel.value !== 'custom'))
+  f.proxy.classList.toggle('hidden', f.proxySel.value !== 'custom')
+  // servidores de salto possíveis: as outras sessões SSH
+  Api.ListSessions().then((list) => {
+    for (const x of list) {
+      if (x.id !== s.id && typeOf(x) === 'ssh') f.jump.append(opt(x.id, x.name, x.id === s.jumpHost))
+    }
+  }).catch(() => {})
 
   const keyRow = h('div', {},
     h('label', {}, 'Arquivo da chave privada'),
@@ -59,6 +85,9 @@ export function editSession(existing, onChange, preset) {
         id: s.id || '', type, name: f.name.value, folder: f.folder.value, host: f.host.value,
         port: parseInt(f.port.value, 10) || 0, user: f.user.value, authMethod: f.auth.value,
         keyPath: f.keyPath.value, startupCommand: f.startup.value, notes: s.notes || '',
+        proxy: f.proxySel.value === 'custom' ? f.proxy.value : f.proxySel.value, jumpHost: f.jump.value,
+        proxyCommand: f.proxyCmd.value, encoding: f.encoding.value, termType: f.termType.value,
+        startDir: f.startDir.value, env: f.env.value, x11: f.x11.checked,
         serialPort: f.serialPort.value, baudRate: parseInt(f.baud.value, 10) || 0,
         dataBits: parseInt(f.dataBits.value, 10) || 0, parity: f.parity.value, stopBits: f.stopBits.value,
         shell: f.shell.value, distro: f.distro.value,
@@ -71,17 +100,34 @@ export function editSession(existing, onChange, preset) {
     if (!(await confirmBox('Excluir sessão', `Excluir "${s.name}"? Isso não apaga nada no servidor.`))) return editSession(existing, onChange)
     try { await Api.DeleteSession(s.id); onChange() } catch (e) { toast(cleanErr(e), true) }
   }
-  for (const el of [f.host, f.user, f.port, f.name, f.folder, f.startup, f.serialPort, f.baud, f.shell, f.distro]) {
+  for (const el of [f.host, f.user, f.port, f.name, f.folder, f.serialPort, f.baud, f.shell, f.distro]) {
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') save() })
   }
 
   const grid = (cls, ...cells) => h('div', { class: cls }, cells.filter(Boolean).map(([label, el]) => h('div', {}, h('label', {}, label), el)))
   const fld = (label, el) => h('div', {}, h('label', {}, label), el)
-  const startup = () => fld('Comando ao conectar', f.startup)
+  const startup = () => fld('Comandos ao conectar', f.startup)
   const sep = () => h('div', { class: 'sd-sep' })
   // nome e pasta ficam no fim de qualquer tipo: é tudo o que "favorito" precisava ter
   const book = () => grid('sd-grid-eq', ['Nome', f.name], ['Pasta', f.folder])
   const authRow = () => h('div', { class: 'sd-grid-eq' }, h('div', {}, h('label', {}, 'Autenticação'), f.auth), keyRow)
+
+  // opções menos usadas ficam recolhidas, no mesmo painel
+  const moreFor = (t) => {
+    const net = t === 'ssh' || t === 'sftp' || t === 'telnet'
+    const items = []
+    if (net) {
+      items.push(h('div', { class: 'sd-grid-eq' }, h('div', {}, h('label', {}, 'Servidor de salto'), f.jump), h('div', {}, h('label', {}, 'Proxy'), f.proxySel, f.proxy)))
+      items.push(fld('ProxyCommand', f.proxyCmd))
+    }
+    if (t !== 'sftp') items.push(grid('sd-grid-eq', ['Codificação', cb.encoding], t === 'serial' ? null : ['Tipo de terminal', cb.termType]))
+    if (t === 'ssh' || t === 'shell' || t === 'wsl') items.push(fld('Pasta inicial', f.startDir))
+    if (t === 'ssh' || t === 'shell' || t === 'wsl') items.push(fld('Variáveis de ambiente', f.env))
+    if (t === 'ssh') items.push(h('label', { class: 'check' }, f.x11, ' Encaminhar X11'))
+    if (!items.length) return null
+    const used = !!(s.proxy || s.proxyCommand || s.jumpHost || s.encoding || s.termType || s.startDir || s.env || s.x11)
+    return h('details', { class: 'sd-more', open: used }, h('summary', {}, 'Mais opções'), ...items)
+  }
 
   // um único painel por tipo de sessão, sem abas
   const panelFor = (t) => {
@@ -92,21 +138,23 @@ export function editSession(existing, onChange, preset) {
           grid('sd-grid3', ['Host remoto *', f.host], ['Usuário *', f.user], ['Porta', f.port]),
           authRow(),
           t === 'ssh' ? startup() : null,
+          moreFor(t),
           sep(), book())
       case 'telnet':
         return h('div', { class: 'sd-form' },
           grid('sd-grid2', ['Host remoto *', f.host], ['Porta', f.port]),
           startup(),
+          moreFor(t),
           sep(), book())
       case 'serial':
         return h('div', { class: 'sd-form' },
           grid('sd-grid2', ['Porta serial *', cb.serial], ['Velocidade (baud)', cb.baud]),
           grid('sd-grid3b', ['Bits de dados', f.dataBits], ['Paridade', f.parity], ['Bits de parada', f.stopBits]),
-          startup(), sep(), book())
+          startup(), moreFor(t), sep(), book())
       case 'shell':
-        return h('div', { class: 'sd-form' }, fld('Programa do shell', cb.shell), startup(), sep(), book())
+        return h('div', { class: 'sd-form' }, fld('Programa do shell', cb.shell), startup(), moreFor(t), sep(), book())
       default: // wsl
-        return h('div', { class: 'sd-form' }, fld('Distribuição Linux', cb.distro), startup(), sep(), book())
+        return h('div', { class: 'sd-form' }, fld('Distribuição Linux', cb.distro), startup(), moreFor(t), sep(), book())
     }
   }
 
@@ -272,7 +320,12 @@ export function settingsDialog(onApply) {
     autoSftp: h('input', { type: 'checkbox', checked: settings.autoSftp }),
     monitoring: h('input', { type: 'checkbox', checked: settings.monitoring }),
     follow: h('input', { type: 'checkbox', checked: settings.followFolder }),
+    proxy: h('input', { type: 'text', value: settings.proxy, spellcheck: 'false', placeholder: 'Sem proxy (socks5://host:1080 ou http://host:3128)' }),
+    multi: h('input', { type: 'checkbox', checked: settings.multiInstance }),
   }
+  const linkBtn = h('button', { onclick: async () => {
+    try { await Api.RegisterLinkHandler(); toast('Links ssh:// e telnet:// agora abrem no NxATerm') } catch (e) { toast(cleanErr(e), true) }
+  } }, 'Abrir links ssh:// e telnet:// com o NxATerm')
   const apply = () => {
     settings.font = f.font.value
     settings.fontSize = Math.min(32, Math.max(8, parseInt(f.size.value, 10) || 14))
@@ -285,6 +338,8 @@ export function settingsDialog(onApply) {
     settings.autoSftp = f.autoSftp.checked
     settings.monitoring = f.monitoring.checked
     settings.followFolder = f.follow.checked
+    settings.proxy = f.proxy.value.trim()
+    settings.multiInstance = f.multi.checked
     saveSettings()
     closeModal()
     onApply()
@@ -305,6 +360,11 @@ export function settingsDialog(onApply) {
     h('label', { class: 'check' }, f.autoSftp, ' Abrir o navegador SFTP ao conectar'),
     h('label', { class: 'check' }, f.follow, ' Navegador SFTP acompanha o terminal'),
     h('label', { class: 'check' }, f.monitoring, ' Uso do servidor na barra de status'),
+    h('h3', {}, 'Conexão'),
+    field('Proxy geral', f.proxy),
+    h('h3', {}, 'Sistema'),
+    h('label', { class: 'check' }, f.multi, ' Permitir várias janelas do NxATerm'),
+    h('div', { class: 'row' }, linkBtn),
     h('div', { class: 'btns' },
       h('button', { onclick: closeModal }, 'Cancelar'),
       h('button', { class: 'primary', onclick: apply }, 'Aplicar')),
