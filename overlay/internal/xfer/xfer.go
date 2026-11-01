@@ -442,3 +442,41 @@ func walk(ctx context.Context, f FS, p string, ds *DirStat, depth int) error {
 	}
 	return nil
 }
+
+// Lstat devolve o item sem seguir link simbólico. Usa o método do próprio FS quando existe
+// e, senão, procura o item na listagem da pasta.
+func Lstat(f FS, p string) (Entry, error) {
+	if l, ok := f.(interface{ Lstat(string) (Entry, error) }); ok {
+		return l.Lstat(p)
+	}
+	dir, name := splitDir(p)
+	if dir == "" {
+		dir = "."
+	}
+	list, err := f.List(dir)
+	if err != nil {
+		return Entry{}, err
+	}
+	for _, e := range list {
+		if e.Name == name {
+			return e, nil
+		}
+	}
+	return Entry{}, fmt.Errorf("%s: %w", p, fs.ErrNotExist)
+}
+
+// MkdirAll cria a pasta e as que faltarem no caminho (caminhos com "/").
+func MkdirAll(f FS, p string) error {
+	if e, err := f.Stat(p); err == nil {
+		if e.IsDir {
+			return nil
+		}
+		return fmt.Errorf("%s já existe e não é uma pasta", p)
+	}
+	if i := strings.LastIndex(p, "/"); i > 0 {
+		if err := MkdirAll(f, p[:i]); err != nil {
+			return err
+		}
+	}
+	return f.Mkdir(p)
+}

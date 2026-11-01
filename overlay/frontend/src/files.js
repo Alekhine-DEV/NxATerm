@@ -58,6 +58,7 @@ export function createPane(side, tab, { wide = false, peer = () => null } = {}) 
   const parentP = remote ? parentPath : localParent
   const list = (path) => (remote ? Api.SFTPList(tab.id, path) : Api.LocalList(path))
   const dead = () => remote && (tab.dead || !tab.ready)
+  const ftp = remote && tab.kind === 'ftp'
 
   // ---- elementos
   const pathEl = h('input', { class: 'fp-path', type: 'text', spellcheck: 'false', placeholder: remote ? '/' : '' })
@@ -510,7 +511,7 @@ export function createPane(side, tab, { wide = false, peer = () => null } = {}) 
       { label: 'Copiar caminho', onclick: () => host.copyText(sel.map(fullPath).join('\n')) })
     if (remote) {
       items.push(
-        { label: 'Permissões...', icon: 'lock', onclick: () => chmodDialog(sel) },
+        ...(ftp ? [] : [{ label: 'Permissões...', icon: 'lock', onclick: () => chmodDialog(sel) }]),
         { label: 'Propriedades', icon: 'info', disabled: multi, onclick: () => infoDialog(e) })
     }
     items.push({ sep: true }, ...newItems(), { sep: true }, { label: 'Excluir', icon: 'trash', kbd: 'Del', danger: true, onclick: deleteSel })
@@ -583,18 +584,24 @@ export function createPane(side, tab, { wide = false, peer = () => null } = {}) 
 
   async function infoDialog(e) {
     let d
-    try { d = await Api.SFTPInfo(tab.id, fullPath(e)) } catch (err) { return toast(cleanErr(err), true) }
+    if (ftp) {
+      d = { path: fullPath(e), name: e.name, size: e.size, isDir: e.isDir, link: e.isLink, linkTarget: '', modTime: e.modTime }
+    } else {
+      try { d = await Api.SFTPInfo(tab.id, fullPath(e)) } catch (err) { return toast(cleanErr(err), true) }
+    }
     const sizeVal = h('span', {}, fmtSize(d.size) + (d.size >= 1024 ? ` (${d.size.toLocaleString('pt-BR')} bytes)` : ''))
     const rowsEl = [
       ['Nome', d.name],
       ['Caminho', d.path],
       ['Tipo', d.link ? 'Link' + (d.isDir ? ' para pasta' : '') + (d.linkTarget ? ' → ' + d.linkTarget : '') : d.isDir ? 'Pasta' : 'Arquivo'],
       ['Tamanho', sizeVal],
-      ['Permissões', `${d.mode} (${(d.perm & 0o777).toString(8).padStart(3, '0')})`],
-      ['Dono (UID)', String(d.uid)],
-      ['Grupo (GID)', String(d.gid)],
+      ...(ftp ? [] : [
+        ['Permissões', `${d.mode} (${(d.perm & 0o777).toString(8).padStart(3, '0')})`],
+        ['Dono (UID)', String(d.uid)],
+        ['Grupo (GID)', String(d.gid)],
+      ]),
       ['Modificado', fmtDate(d.modTime)],
-      ['Acessado', fmtDate(d.accessTime)],
+      ...(ftp ? [] : [['Acessado', fmtDate(d.accessTime)]]),
     ].map(([k, v]) => h('div', { class: 'info-row' }, h('span', { class: 'ik' }, k), h('span', { class: 'iv' }, v)))
     const calc = d.isDir && !d.link
       ? h('button', {
@@ -634,7 +641,7 @@ export function renderSide() {
   const t = host.activeTab()
   const msg = (s) => box.replaceChildren(h('div', { class: 'sftp-msg' }, s))
   if (!t) return msg('Nenhuma sessão aberta.')
-  if (t.kind === 'sftp') return msg('Esta sessão SFTP mostra os arquivos na própria aba.')
+  if (t.kind === 'sftp' || t.kind === 'ftp') return msg('Esta sessão mostra os arquivos na própria aba.')
   if (t.kind !== 'ssh') return msg('Sem arquivos nesta sessão.')
   const pane = remotePaneOf(t)
   if (box.firstChild !== pane.el) box.replaceChildren(pane.el)

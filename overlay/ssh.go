@@ -50,6 +50,8 @@ type termSession struct {
 	sftpMu sync.Mutex
 	sftp   *sftp.Client
 
+	ftp *ftpPool // sessões FTP
+
 	statsMu   sync.Mutex
 	prevStats *rawStats
 }
@@ -77,7 +79,7 @@ func (t *termSession) close() {
 // sshClient devolve a conexão SSH da aba, ou um erro claro nos outros tipos.
 func (t *termSession) sshClient() (*ssh.Client, error) {
 	if t.client == nil {
-		return nil, errors.New("esta aba não é uma conexão SSH")
+		return nil, errors.New("esta operação só existe em conexões SSH/SFTP")
 	}
 	return t.client, nil
 }
@@ -103,6 +105,9 @@ func (t *termSession) sftpClient() (*sftp.Client, error) {
 
 // files devolve o sistema de arquivos remoto da aba (SFTP).
 func (t *termSession) files() (xfer.FS, error) {
+	if t.ftp != nil {
+		return ftpFS{p: t.ftp}, nil
+	}
 	c, err := t.sftpClient()
 	if err != nil {
 		return nil, err
@@ -236,6 +241,8 @@ func (a *TermService) Connect(id string, s store.Session, secret string, cols, r
 		t, err = a.startSSH(s, secret, cols, rows, true)
 	case store.TypeSFTP:
 		t, err = a.startSSH(s, secret, cols, rows, false)
+	case store.TypeFTP:
+		t, err = a.startFTP(s, secret)
 	case store.TypeTelnet:
 		t, err = a.startTelnet(s, cols, rows)
 	case store.TypeSerial:

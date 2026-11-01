@@ -88,3 +88,18 @@ func (f sftpFS) Rename(from, to string) error {
 	return f.c.Rename(from, to)
 }
 func (f sftpFS) Join(elem ...string) string { return pathpkg.Join(elem...) }
+
+// Lstat não segue links simbólicos.
+func (f sftpFS) Lstat(p string) (xfer.Entry, error) {
+	fi, err := f.c.Lstat(p)
+	if err != nil {
+		return xfer.Entry{}, err
+	}
+	e := sftpEntry(fi)
+	e.Name = pathpkg.Base(p)
+	e.IsLink = fi.Mode()&os.ModeSymlink != 0
+	return e, nil
+}
+
+// Real resolve "." e caminhos relativos no servidor.
+func (f sftpFS) Real(p string) (string, error) { return f.c.RealPath(p) }

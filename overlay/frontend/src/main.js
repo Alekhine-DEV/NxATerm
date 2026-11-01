@@ -16,7 +16,7 @@ import { keyOf, actionFor, capture } from './keys.js'
 import { memo, memoKey } from './memo.js'
 import { initConnect } from './connect.js'
 import { initFiles, renderSide, buildFileTab } from './files.js'
-import { TYPE_INFO, typeOf, hasFiles, sessionSummary, isWindows } from './sessiontypes.js'
+import { TYPE_INFO, typeOf, hasFiles, hasSSH, hasTerminal, sessionSummary, isWindows } from './sessiontypes.js'
 
 const Events = Runtime.Events
 
@@ -190,7 +190,7 @@ function openSettings() {
 function openTunnels() {
   tunnelDialog(() => {
     const t = activeTab()
-    return t && !t.dead && hasFiles(t.session) ? { id: t.id, name: t.label } : null
+    return t && !t.dead && hasSSH(t.session) ? { id: t.id, name: t.label } : null
   })
 }
 
@@ -632,7 +632,7 @@ async function openSession(s) {
   let secret = ''
   let save = null // chave onde guardar a senha depois que a conexão der certo
   let fromMemo = false
-  if (hasFiles(s) && s.authMethod === 'password') {
+  if (hasFiles(s) && s.authMethod === 'password' && !(typeOf(s) === 'ftp' && !s.user)) {
     const key = memoKey('pw', s)
     if (memo.has(key)) { secret = memo.get(key); fromMemo = true } else {
       const r = await askSecret('Senha', `Senha de ${s.user}@${s.host}`, key)
@@ -679,7 +679,7 @@ async function openSession(s) {
 async function startTab(s, secret) {
   const prevActive = activeId
   const kind = typeOf(s)
-  const isTerm = kind !== 'sftp'
+  const isTerm = hasTerminal(s)
   const id = 'tab' + (++tabCounter) + '-' + Math.random().toString(36).slice(2, 8)
   const num = ++tabNumber
   const label = `${num}. ${s.name}`

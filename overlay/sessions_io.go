@@ -141,6 +141,8 @@ func sessionSummaryGo(s store.Session) string {
 	switch s.Type {
 	case store.TypeTelnet:
 		return fmt.Sprintf("%s:%d", s.Host, s.Port)
+	case store.TypeFTP:
+		return fmt.Sprintf("ftp://%s:%d", s.Host, s.Port)
 	case store.TypeSerial:
 		return fmt.Sprintf("%s · %d baud", s.SerialPort, s.BaudRate)
 	case store.TypeShell:

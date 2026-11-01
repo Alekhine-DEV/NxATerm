@@ -40,10 +40,14 @@ type DirListing struct {
 }
 
 func toFileEntry(e xfer.Entry) FileEntry {
-	return FileEntry{
-		Name: e.Name, Size: e.Size, IsDir: e.IsDir, IsLink: e.IsLink,
-		Mode: e.Mode.String(), Perm: int(e.Mode.Perm()), ModTime: e.ModTime.Unix(),
+	fe := FileEntry{Name: e.Name, Size: e.Size, IsDir: e.IsDir, IsLink: e.IsLink, ModTime: e.ModTime.Unix()}
+	if e.ModTime.IsZero() {
+		fe.ModTime = 0
 	}
+	if e.Mode != 0 { // o FTP não informa permissões
+		fe.Mode, fe.Perm = e.Mode.String(), int(e.Mode.Perm())
+	}
+	return fe
 }
 
 func sortEntries(list []FileEntry) {
@@ -66,20 +70,36 @@ func (a *TermService) sftpOf(id string) (*sftp.Client, *termSession, error) {
 	return c, t, err
 }
 
-// SFTPList lista um diretório remoto. Com path vazio, abre a pasta inicial.
+// fsOf devolve o sistema de arquivos remoto da aba (SFTP ou FTP).
+func (a *TermService) fsOf(id string) (xfer.FS, *termSession, error) {
+	t, err := a.term(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	f, err := t.files()
+	return f, t, err
+}
+
+type realPather interface {
+	Real(p string) (string, error)
+}
+
+// SFTPList lista um diretório remoto (SFTP ou FTP). Com path vazio, abre a pasta inicial.
 func (a *TermService) SFTPList(id, path string) (DirListing, error) {
-	c, _, err := a.sftpOf(id)
+	f, _, err := a.fsOf(id)
 	if err != nil {
 		return DirListing{}, err
 	}
-	if path == "" {
-		path = "."
+	abs := path
+	if r, ok := f.(realPather); ok {
+		if path == "" {
+			path = "."
+		}
+		if abs, err = r.Real(path); err != nil {
+			return DirListing{}, err
+		}
 	}
-	abs, err := c.RealPath(path)
-	if err != nil {
-		return DirListing{}, err
-	}
-	list, err := sftpFS{c}.List(abs)
+	list, err := f.List(abs)
 	if err != nil {
 		return DirListing{}, err
 	}
@@ -93,68 +113,72 @@ func (a *TermService) SFTPList(id, path string) (DirListing, error) {
 
 // SFTPMkdir cria uma pasta remota (e as que faltarem no caminho).
 func (a *TermService) SFTPMkdir(id, path string) error {
-	c, _, err := a.sftpOf(id)
+	f, _, err := a.fsOf(id)
 	if err != nil {
 		return err
 	}
-	return c.MkdirAll(path)
+	return xfer.MkdirAll(f, path)
 }
 
 // SFTPCreateFile cria um arquivo vazio; falha se já existir.
 func (a *TermService) SFTPCreateFile(id, path string) error {
-	c, _, err := a.sftpOf(id)
+	f, _, err := a.fsOf(id)
 	if err != nil {
 		return err
 	}
-	f, err := c.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
+	if _, err := f.Stat(path); err == nil {
+		return errors.New("já existe um item com esse nome")
+	}
+	w, err := f.Create(path, 0)
 	if err != nil {
 		return err
 	}
-	return f.Close()
+	return w.Close()
 }
 
 // SFTPRemove apaga um arquivo ou uma pasta com todo o conteúdo (links são apagados
 // sem seguir o destino). O frontend sempre pede confirmação antes de chamar.
 func (a *TermService) SFTPRemove(id, path string) error {
-	c, _, err := a.sftpOf(id)
+	f, _, err := a.fsOf(id)
 	if err != nil {
 		return err
 	}
-	fi, err := c.Lstat(path)
+	e, err := xfer.Lstat(f, path)
 	if err != nil {
 		return err
 	}
-	e := xfer.Entry{Name: fi.Name(), IsDir: fi.IsDir(), IsLink: fi.Mode()&os.ModeSymlink != 0}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	return xfer.RemoveAll(ctx, sftpFS{c}, path, e)
+	return xfer.RemoveAll(ctx, f, path, e)
 }
 
 // SFTPRename renomeia/move um item remoto.
 func (a *TermService) SFTPRename(id, from, to string) error {
-	c, _, err := a.sftpOf(id)
+	f, _, err := a.fsOf(id)
 	if err != nil {
 		return err
 	}
-	return sftpFS{c}.Rename(from, to)
+	if _, err := f.Stat(to); err == nil {
+		return errors.New("já existe um item com esse nome")
+	}
+	return f.Rename(from, to)
 }
 
 // SFTPMove move itens para outra pasta do servidor.
 func (a *TermService) SFTPMove(id string, from []string, toDir string) error {
-	c, _, err := a.sftpOf(id)
+	f, _, err := a.fsOf(id)
 	if err != nil {
 		return err
 	}
-	fs := sftpFS{c}
 	for _, p := range from {
-		dst := pathpkg.Join(toDir, pathpkg.Base(p))
+		dst := f.Join(toDir, pathpkg.Base(p))
 		if dst == p {
 			continue
 		}
-		if _, err := c.Lstat(dst); err == nil {
+		if _, err := f.Stat(dst); err == nil {
 			return fmt.Errorf("já existe %q na pasta de destino", pathpkg.Base(p))
 		}
-		if err := fs.Rename(p, dst); err != nil {
+		if err := f.Rename(p, dst); err != nil {
 			return fmt.Errorf("%s: %w", p, err)
 		}
 	}
@@ -163,7 +187,7 @@ func (a *TermService) SFTPMove(id string, from []string, toDir string) error {
 
 // SFTPCopy copia itens dentro do servidor (usa "cp -a" por SSH, então precisa de shell).
 func (a *TermService) SFTPCopy(id string, from []string, toDir string) error {
-	_, t, err := a.sftpOf(id)
+	t, err := a.term(id)
 	if err != nil {
 		return err
 	}

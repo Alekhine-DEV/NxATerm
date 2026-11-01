@@ -472,3 +472,21 @@ func TestNormalizeConnectionOptions(t *testing.T) {
 		t.Fatalf("%+v", sh)
 	}
 }
+
+func TestNormalizeFTP(t *testing.T) {
+	s, err := Normalize(Session{Type: "ftp", Host: " ftp.exemplo.com "})
+	if err != nil || s.Port != 21 || s.Name != "ftp.exemplo.com" || s.AuthMethod != "password" || s.User != "" {
+		t.Fatalf("%+v %v", s, err)
+	}
+	s, err = Normalize(Session{Type: "ftp", Host: "h", User: "u", FTPSecurity: "implicit"})
+	if err != nil || s.Port != 990 || s.Name != "u@h" {
+		t.Fatalf("%+v %v", s, err)
+	}
+	if _, err := Normalize(Session{Type: "ftp", Host: "h", FTPSecurity: "ssl3"}); err == nil {
+		t.Fatal("deveria recusar segurança inválida")
+	}
+	s, _ = Normalize(Session{Type: "ssh", Host: "h", User: "u", FTPSecurity: "explicit", FTPInsecure: true})
+	if s.FTPSecurity != "" || s.FTPInsecure {
+		t.Fatal("campos de FTP não valem para SSH")
+	}
+}

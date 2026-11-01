@@ -2,6 +2,7 @@
 export const TYPE_INFO = {
   ssh: { label: 'SSH', icon: 'key', tabIcon: 'terminal', color: '#ffc94a', defPort: 22 },
   sftp: { label: 'SFTP', icon: 'folder', tabIcon: 'folder', color: '#f5a43a', defPort: 22 },
+  ftp: { label: 'FTP', icon: 'ftp', tabIcon: 'ftp', color: '#4fd1d1', defPort: 21 },
   telnet: { label: 'Telnet', icon: 'telnet', tabIcon: 'telnet', color: '#b07cff', defPort: 23 },
   serial: { label: 'Serial', icon: 'serial', tabIcon: 'serial', color: '#9aa7b3', defPort: 0 },
   shell: { label: 'Shell', icon: 'shell', tabIcon: 'shell', color: '#d0d0d0', defPort: 0 },
@@ -17,11 +18,17 @@ export const availableTypes = () => Object.entries(TYPE_INFO).filter(([k]) => is
 /** Perfis antigos não têm tipo: são SSH. */
 export const typeOf = (s) => (s && TYPE_INFO[s.type] ? s.type : 'ssh')
 
-/** Tipos que abrem um terminal (todos menos o SFTP). */
-export const hasTerminal = (s) => typeOf(s) !== 'sftp'
+/** Tipos que só mostram arquivos, sem terminal. */
+export const FILE_ONLY = new Set(['sftp', 'ftp'])
 
-/** Tipos que passam por uma conexão SSH (e portanto têm arquivos). */
-export const hasFiles = (s) => typeOf(s) === 'ssh' || typeOf(s) === 'sftp'
+/** Tipos que abrem um terminal (todos menos os de só arquivos). */
+export const hasTerminal = (s) => !FILE_ONLY.has(typeOf(s))
+
+/** Tipos que passam por uma conexão SSH (aceitam túneis, permissões e cópia no servidor). */
+export const hasSSH = (s) => typeOf(s) === 'ssh' || typeOf(s) === 'sftp'
+
+/** Tipos que têm navegador de arquivos. */
+export const hasFiles = (s) => hasSSH(s) || typeOf(s) === 'ftp'
 
 /** Texto curto que descreve para onde a sessão vai. */
 export function sessionSummary(s) {
@@ -30,6 +37,7 @@ export function sessionSummary(s) {
     case 'serial': return `${s.serialPort} · ${s.baudRate || 9600} baud`
     case 'shell': return s.shell || 'shell padrão'
     case 'wsl': return s.distro || 'distribuição padrão'
+    case 'ftp': return `${s.ftpSecurity ? 'ftps' : 'ftp'}://${s.user ? s.user + '@' : ''}${s.host}${s.port && s.port !== 21 ? ':' + s.port : ''}`
     default: return `${s.user}@${s.host}${s.port && s.port !== 22 ? ':' + s.port : ''}`
   }
 }

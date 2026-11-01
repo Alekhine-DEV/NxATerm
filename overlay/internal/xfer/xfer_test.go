@@ -252,3 +252,25 @@ func TestRemoveAllDoesNotFollowLinks(t *testing.T) {
 		t.Fatal("apagou o conteúdo do destino do link!")
 	}
 }
+
+func TestMkdirAllAndLstat(t *testing.T) {
+	d := t.TempDir()
+	p := d + "/a/b/c"
+	if err := MkdirAll(Local{}, p); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(p); err != nil || !fi.IsDir() {
+		t.Fatal("não criou")
+	}
+	write(t, filepath.Join(d, "f"), "x")
+	if err := MkdirAll(Local{}, filepath.Join(d, "f")); err == nil {
+		t.Fatal("deveria recusar: já é arquivo")
+	}
+	e, err := Lstat(Local{}, filepath.Join(d, "a"))
+	if err != nil || !e.IsDir {
+		t.Fatalf("%+v %v", e, err)
+	}
+	if _, err := Lstat(Local{}, filepath.Join(d, "nao")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("erro = %v", err)
+	}
+}

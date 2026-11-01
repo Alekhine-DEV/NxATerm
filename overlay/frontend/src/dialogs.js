@@ -16,7 +16,7 @@ export function editSession(existing, onChange, preset) {
     type: 'ssh', name: '', folder: '', host: '', port: 0, user: '', authMethod: 'password', keyPath: '',
     startupCommand: '', notes: '', serialPort: '', baudRate: 9600, dataBits: 8, parity: 'none', stopBits: '1',
     shell: '', distro: '', proxy: '', proxyCommand: '', jumpHost: '', encoding: '', termType: '',
-    startDir: '', env: '', x11: false, ...(existing || preset || {}),
+    startDir: '', env: '', x11: false, ftpSecurity: '', ftpInsecure: false, ...(existing || preset || {}),
   }
   let type = typeOf(s)
 
@@ -53,6 +53,11 @@ export function editSession(existing, onChange, preset) {
     startDir: h('input', { type: 'text', value: s.startDir, spellcheck: 'false' }),
     env: h('textarea', { rows: 2, spellcheck: 'false', placeholder: 'NOME=valor' }, s.env),
     x11: h('input', { type: 'checkbox', checked: !!s.x11 }),
+    ftpSec: h('select', {},
+      opt('', 'FTP (sem criptografia)', !s.ftpSecurity),
+      opt('explicit', 'FTPS explícito (AUTH TLS)', s.ftpSecurity === 'explicit'),
+      opt('implicit', 'FTPS implícito', s.ftpSecurity === 'implicit')),
+    ftpInsecure: h('input', { type: 'checkbox', checked: !!s.ftpInsecure }),
   }
   const cb = {
     serial: combo(f.serialPort, () => Api.SerialPorts()),
@@ -62,6 +67,11 @@ export function editSession(existing, onChange, preset) {
     encoding: combo(f.encoding, () => ENCODINGS),
     termType: combo(f.termType, () => TERMS),
   }
+  f.ftpSec.addEventListener('change', () => {
+    const p = parseInt(f.port.value, 10)
+    if (f.ftpSec.value === 'implicit' && (!p || p === 21)) f.port.value = 990
+    else if (f.ftpSec.value !== 'implicit' && p === 990) f.port.value = 21
+  })
   f.proxySel.addEventListener('change', () => f.proxy.classList.toggle('hidden', f.proxySel.value !== 'custom'))
   f.proxy.classList.toggle('hidden', f.proxySel.value !== 'custom')
   // servidores de salto possíveis: as outras sessões SSH
@@ -91,6 +101,7 @@ export function editSession(existing, onChange, preset) {
         serialPort: f.serialPort.value, baudRate: parseInt(f.baud.value, 10) || 0,
         dataBits: parseInt(f.dataBits.value, 10) || 0, parity: f.parity.value, stopBits: f.stopBits.value,
         shell: f.shell.value, distro: f.distro.value,
+        ftpSecurity: type === 'ftp' ? f.ftpSec.value : '', ftpInsecure: type === 'ftp' && f.ftpInsecure.checked,
       })
       closeModal()
       onChange()
@@ -114,18 +125,19 @@ export function editSession(existing, onChange, preset) {
 
   // opções menos usadas ficam recolhidas, no mesmo painel
   const moreFor = (t) => {
-    const net = t === 'ssh' || t === 'sftp' || t === 'telnet'
+    const net = t === 'ssh' || t === 'sftp' || t === 'telnet' || t === 'ftp'
     const items = []
     if (net) {
       items.push(h('div', { class: 'sd-grid-eq' }, h('div', {}, h('label', {}, 'Servidor de salto'), f.jump), h('div', {}, h('label', {}, 'Proxy'), f.proxySel, f.proxy)))
       items.push(fld('ProxyCommand', f.proxyCmd))
     }
-    if (t !== 'sftp') items.push(grid('sd-grid-eq', ['Codificação', cb.encoding], t === 'serial' ? null : ['Tipo de terminal', cb.termType]))
+    if (t === 'ftp') items.push(h('label', { class: 'check' }, f.ftpInsecure, ' Aceitar certificado não verificado'))
+    if (t !== 'sftp' && t !== 'ftp') items.push(grid('sd-grid-eq', ['Codificação', cb.encoding], t === 'serial' ? null : ['Tipo de terminal', cb.termType]))
     if (t === 'ssh' || t === 'shell' || t === 'wsl') items.push(fld('Pasta inicial', f.startDir))
     if (t === 'ssh' || t === 'shell' || t === 'wsl') items.push(fld('Variáveis de ambiente', f.env))
     if (t === 'ssh') items.push(h('label', { class: 'check' }, f.x11, ' Encaminhar X11'))
     if (!items.length) return null
-    const used = !!(s.proxy || s.proxyCommand || s.jumpHost || s.encoding || s.termType || s.startDir || s.env || s.x11)
+    const used = !!(s.proxy || s.proxyCommand || s.jumpHost || s.encoding || s.termType || s.startDir || s.env || s.x11 || s.ftpInsecure)
     return h('details', { class: 'sd-more', open: used }, h('summary', {}, 'Mais opções'), ...items)
   }
 
@@ -138,6 +150,12 @@ export function editSession(existing, onChange, preset) {
           grid('sd-grid3', ['Host remoto *', f.host], ['Usuário *', f.user], ['Porta', f.port]),
           authRow(),
           t === 'ssh' ? startup() : null,
+          moreFor(t),
+          sep(), book())
+      case 'ftp':
+        return h('div', { class: 'sd-form' },
+          grid('sd-grid3', ['Host remoto *', f.host], ['Usuário', f.user], ['Porta', f.port]),
+          fld('Segurança', f.ftpSec),
           moreFor(t),
           sep(), book())
       case 'telnet':

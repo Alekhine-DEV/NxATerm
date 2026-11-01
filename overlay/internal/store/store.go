@@ -24,6 +24,7 @@ const (
 	TypeSerial = "serial"
 	TypeShell  = "shell"
 	TypeWSL    = "wsl"
+	TypeFTP    = "ftp"
 )
 
 // Session é um perfil de conexão (SSH, SFTP, Telnet, serial, shell local ou WSL).
@@ -62,6 +63,10 @@ type Session struct {
 	StartDir string `json:"startDir,omitempty"` // pasta inicial
 	Env      string `json:"env,omitempty"`      // variáveis, uma NOME=valor por linha
 	X11      bool   `json:"x11,omitempty"`      // encaminhar o X11 (SSH)
+
+	// FTP
+	FTPSecurity string `json:"ftpSecurity,omitempty"` // vazio = sem criptografia; "explicit" (AUTH TLS) ou "implicit" (porta 990)
+	FTPInsecure bool   `json:"ftpInsecure,omitempty"` // aceita certificado não verificado
 }
 
 // Store mantém a lista de sessões em memória e no disco.
@@ -158,6 +163,30 @@ func Normalize(in Session) (Session, error) {
 			return in, errors.New("o servidor de salto não pode ser a própria sessão")
 		}
 
+	case TypeFTP:
+		switch in.FTPSecurity {
+		case "", "explicit", "implicit":
+		default:
+			return in, fmt.Errorf("segurança de FTP inválida: %q", in.FTPSecurity)
+		}
+		def := 21
+		if in.FTPSecurity == "implicit" {
+			def = 990
+		}
+		if err := normalizeRemote(&in, def, false); err != nil {
+			return in, err
+		}
+		in.AuthMethod, in.KeyPath = "password", ""
+		in.X11 = false
+		in.Encoding, in.TermType, in.StartDir, in.Env, in.StartupCommand = "", "", "", "", ""
+		if in.Name == "" {
+			if in.User != "" {
+				in.Name = in.User + "@" + in.Host
+			} else {
+				in.Name = in.Host
+			}
+		}
+
 	case TypeTelnet:
 		if err := normalizeRemote(&in, 23, false); err != nil {
 			return in, err
@@ -229,6 +258,9 @@ func Normalize(in Session) (Session, error) {
 		return in, fmt.Errorf("tipo de sessão inválido: %q", in.Type)
 	}
 
+	if in.Type != TypeFTP {
+		in.FTPSecurity, in.FTPInsecure = "", false
+	}
 	in.Proxy = strings.TrimSpace(in.Proxy)
 	in.ProxyCommand = strings.TrimSpace(in.ProxyCommand)
 	in.Encoding = strings.ToLower(strings.TrimSpace(in.Encoding))
