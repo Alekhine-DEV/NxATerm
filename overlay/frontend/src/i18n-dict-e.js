@@ -274,4 +274,7 @@ Túnel "{0}" caiu: reconectando...¦Tunnel "{0}" dropped: reconnecting...¦El t�
 Túnel "{0}" reconectado¦Tunnel "{0}" reconnected¦Túnel "{0}" reconectado
 Túnel "{0}": {1}¦Tunnel "{0}": {1}¦Túnel "{0}": {1}
 A porta {0} já é usada pelo túnel "{1}"¦Port {0} is already used by the tunnel "{1}"¦El puerto {0} ya lo usa el túnel "{1}"
+Todas as macros¦All macros¦Todas las macros
+Macros de {0}¦Macros for {0}¦Macros de {0}
+MultiExec: {0} sessões¦MultiExec: {0} sessions¦MultiExec: {0} sesiones
 `

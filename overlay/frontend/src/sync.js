@@ -9,7 +9,7 @@ import { applyAppearance } from './uitheme.js'
 const SYNC_KEYS = [
   'font', 'fontSize', 'theme', 'cursorStyle', 'cursorBlink', 'scrollback', 'copyOnSelect', 'rightClick',
   'autoSftp', 'monitoring', 'followFolder', 'termSync', 'uiTheme', 'uiThemes', 'customThemes', 'customCss',
-  'termOpacity', 'unicode11', 'inlineImages', 'zmodem', 'trzsz', 'ligatures', 'highlight', 'keys', 'macroScope',
+  'termOpacity', 'unicode11', 'inlineImages', 'zmodem', 'trzsz', 'ligatures', 'highlight', 'keys',
 ]
 
 // Segredos: só na memória (e, se o usuário pedir, num arquivo local só dele).

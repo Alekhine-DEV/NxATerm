@@ -134,8 +134,8 @@ const MENUS = {
     { label: 'Sincronização...', icon: 'refresh', onclick: openSync },
   ],
   Macros: () => [
-    ...(visibleMacros('active').length
-      ? visibleMacros('active').map((m) => ({ label: (m.pinned ? '★ ' : '') + m.name, icon: 'play', onclick: () => runMacro(m, false) }))
+    ...(visibleMacros().length
+      ? visibleMacros().map((m) => ({ label: (m.pinned ? '★ ' : '') + m.name, icon: 'play', onclick: () => runMacro(m, false) }))
       : [{ label: '(nenhuma macro)', disabled: true }]),
     { sep: true },
     { label: 'Nova macro...', icon: 'plus', onclick: () => editMacro(null, refreshMacros) },
@@ -622,28 +622,43 @@ function macroApplies(m, sess) {
   return (sess.tags || []).some((t) => tg.includes(t.toLowerCase()))
 }
 
-function visibleMacros(scope = settings.macroScope) {
-  if (scope === 'all') return macros
+/** As macros que valem para a sessão da aba ativa (menu Macros). */
+function visibleMacros() {
   const t = activeTab()
   return macros.filter((m) => macroApplies(m, t ? t.session : null))
 }
 
+const macroOpen = new Set() // grupos recolhidos: "g:<chave>"
+const isBound = (m) => (m.sessions || []).length > 0 || (m.tags || []).length > 0
+
+/** As sessões do contexto: as das abas recebendo no MultiExec, a da aba ativa, ou todas as salvas se não há aba de sessão. */
+function macroContext() {
+  if (me.open) {
+    const list = meTargets().filter((t) => t.session && t.kind !== 'home')
+    if (list.length) return { kind: 'multi', sessions: [...new Map(list.map((t) => [t.session.id || t.session.name, t.session])).values()] }
+  }
+  const t = activeTab()
+  if (t && t.session && t.kind !== 'home') return { kind: 'one', sessions: [t.session] }
+  return { kind: 'all', sessions: sessions.filter((s) => macros.some((m) => isBound(m) && macroApplies(m, s))) }
+}
+
 function renderMacros() {
   const box = $('macro-list')
-  const scope = settings.macroScope
-  const list = visibleMacros()
-  const seg = (id, label) => h('button', {
-    class: 'seg' + (scope === id ? ' on' : ''),
-    onclick: () => { settings.macroScope = id; saveSettings(); renderMacros() },
-  }, label)
-  const head = h('div', { class: 'macro-head' }, seg('active', 'Da sessão ativa'), seg('all', 'Todas'))
-  if (!list.length) {
-    box.replaceChildren(head, h('div', { class: 'sftp-msg' }, macros.length ? 'Nenhuma macro para esta sessão' : 'Nenhuma macro'))
+  if (!box) return
+  const ctx = macroContext()
+  const caption = ctx.kind === 'one' ? `Macros de ${ctx.sessions[0].name}`
+    : ctx.kind === 'multi' ? `MultiExec: ${ctx.sessions.length} sessões` : 'Todas as macros'
+  const head = h('div', { class: 'macro-head' },
+    h('span', { class: 'macro-cap', title: caption }, caption),
+    h('button', { class: 'ib', title: 'Nova macro', onclick: () => editMacro(null, refreshMacros) }, icon('plus', 15)))
+  if (!macros.length) {
+    box.replaceChildren(head, h('div', { class: 'sftp-msg' }, 'Nenhuma macro'))
     return
   }
+
   let dragId = null
-  const rows = list.map((m) => {
-    const row = h('div', { class: 'macro', title: m.command, draggable: scope === 'all' ? 'true' : 'false' },
+  const row = (m) => {
+    const r = h('div', { class: 'macro', title: m.command, draggable: 'true' },
       h('span', { class: 'name' }, m.name),
       h('button', {
         class: 'mini' + (m.pinned ? ' on' : ''), title: m.pinned ? 'Desafixar' : 'Fixar no topo',
@@ -654,23 +669,37 @@ function renderMacros() {
       h('button', { class: 'mini', title: 'Executar na aba ativa', onclick: () => runMacro(m, false) }, icon('play', 13)),
       h('button', { class: 'mini', title: 'Executar em todas as abas abertas', onclick: () => runMacro(m, true) }, icon('playall', 13)),
       h('button', { class: 'mini', title: 'Editar', onclick: () => editMacro(m, refreshMacros) }, icon('pencil', 13)))
-    if (scope === 'all') {
-      row.addEventListener('dragstart', (e) => { dragId = m.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', m.id) })
-      row.addEventListener('dragover', (e) => { if (dragId && dragId !== m.id) { e.preventDefault(); row.classList.add('drop') } })
-      row.addEventListener('dragleave', () => row.classList.remove('drop'))
-      row.addEventListener('drop', async (e) => {
-        e.preventDefault()
-        row.classList.remove('drop')
-        if (!dragId || dragId === m.id) return
-        const ids = macros.map((x) => x.id).filter((x) => x !== dragId)
-        ids.splice(ids.indexOf(m.id), 0, dragId)
-        dragId = null
-        try { await Api.ReorderMacros(ids); refreshMacros() } catch (err) { toast(cleanErr(err), true) }
-      })
-    }
-    return row
-  })
-  box.replaceChildren(head, ...rows)
+    r.addEventListener('dragstart', (e) => { dragId = m.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', m.id) })
+    r.addEventListener('dragover', (e) => { if (dragId && dragId !== m.id) { e.preventDefault(); r.classList.add('drop') } })
+    r.addEventListener('dragleave', () => r.classList.remove('drop'))
+    r.addEventListener('drop', async (e) => {
+      e.preventDefault()
+      r.classList.remove('drop')
+      if (!dragId || dragId === m.id) return
+      const ids = macros.map((x) => x.id).filter((x) => x !== dragId)
+      ids.splice(ids.indexOf(m.id), 0, dragId)
+      dragId = null
+      try { await Api.ReorderMacros(ids); refreshMacros() } catch (err) { toast(cleanErr(err), true) }
+    })
+    return r
+  }
+
+  // um grupo por servidor (feito sozinho, a partir dos vínculos de cada macro); as sem vínculo ficam em "Todas as sessões"
+  const group = (key, title, tip, list) => {
+    const closed = macroOpen.has('g:' + key)
+    const hd = h('div', { class: 'macro-group' + (closed ? ' closed' : ''), title: tip || '' },
+      h('span', { class: 'mg-chev' }, icon('chev', 12)), h('span', { class: 'mg-name' }, title), h('span', { class: 'mg-n' }, String(list.length)))
+    hd.addEventListener('click', () => { macroOpen.has('g:' + key) ? macroOpen.delete('g:' + key) : macroOpen.add('g:' + key); renderMacros() })
+    return [hd, ...(closed ? [] : list.map(row))]
+  }
+  const out = []
+  const general = macros.filter((m) => !isBound(m))
+  if (general.length) out.push(...group('*', 'Todas as sessões', '', general))
+  for (const s of ctx.sessions) {
+    const own = macros.filter((m) => isBound(m) && macroApplies(m, s))
+    if (own.length) out.push(...group(s.id || s.name, s.name, `${s.user ? s.user + '@' : ''}${s.host || ''}`, own))
+  }
+  box.replaceChildren(head, ...(out.length ? out : [h('div', { class: 'sftp-msg' }, 'Nenhuma macro para esta sessão')]))
 }
 
 async function exportMacros() {
@@ -1139,7 +1168,6 @@ function activate(id) {
   renderSide()
   renderStatus()
   renderMultiexec()
-  if (settings.macroScope === 'active') renderMacros()
   if (t) {
     if (t.kind === 'ssh' && settings.followFolder && !t.followInstalled && !t.dead) installFollow(t)
     pollStats()
@@ -1252,6 +1280,7 @@ function toggleMultiexec() {
 }
 
 function renderMultiexec() {
+  renderMacros() // as macros seguem o contexto: sessão ativa, MultiExec ou nenhuma aberta
   for (const t of allTabs()) {
     if (!t.excl) continue
     t.excl.checked = me.off.has(t.id)
@@ -1435,7 +1464,6 @@ function initEvents() {
   })
   $('tree').addEventListener('dragover', (e) => { if (dragSession) e.preventDefault() })
   $('tree').addEventListener('drop', (e) => { if (!e.target.closest('.folder-head')) { e.preventDefault(); moveSession(dragSession, '') } })
-  $('btn-macro-new').addEventListener('click', () => editMacro(null, refreshMacros))
 
   document.addEventListener('keydown', (e) => {
     if (capture.active) return

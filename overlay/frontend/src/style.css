@@ -273,8 +273,8 @@ label.check { display: flex; align-items: center; gap: 7px; color: var(--text); 
 .sd-title { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 4px 12px; background: var(--g-0b0b0b); border-bottom: 1px solid var(--g-2a2a2a); font-size: 12px; }
 .sd-x { background: transparent; border: none; border-radius: 0; padding: 4px 10px; display: flex; }
 .sd-x:hover { background: #c42b1c; border: none; }
-.sd-types { display: flex; flex-wrap: wrap; gap: 2px; padding: 12px 14px 8px; }
-.sd-type { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; width: 74px; height: 62px; background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--g-d6d6d6); font-size: 12px; padding: 2px; }
+.sd-types { display: flex; flex-wrap: nowrap; gap: 2px; padding: 12px 14px 8px; }
+.sd-type { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; flex: 1 1 0; min-width: 0; max-width: 78px; height: 62px; background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--g-d6d6d6); font-size: 12px; padding: 2px; }
 .sd-type .tb-ico { color: var(--c, var(--g-cccccc)); display: flex; }
 .sd-type:hover:not(:disabled) { background: var(--g-2a2a2a); border-color: var(--g-3a3a3a); }
 .sd-type.active { background: var(--t-2b3a55); border-color: var(--accent); }
@@ -447,8 +447,8 @@ select:focus, input.dd:focus { border-color: var(--accent); }
 .modal .btns.center { justify-content: center; margin-top: 22px; }
 
 /* opções recolhidas da janela de sessão */
-.sd-more { border-top: 1px solid var(--border); padding-top: 12px; }
-.sd-more > summary { cursor: pointer; color: var(--muted); user-select: none; padding: 2px 0 8px; }
+.sd-more { padding-top: 0; }
+.sd-more > summary { cursor: pointer; color: var(--muted); user-select: none; padding: 2px 0 6px; }
 .sd-more[open] > summary { color: var(--text); }
 .sd-more > * + * { margin-top: 14px; }
 .sd-more .check { margin-top: 14px; }
@@ -577,9 +577,14 @@ input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid v
 .lock-box { width: 300px; display: flex; flex-direction: column; gap: 12px; }
 .lock-box input { width: 100%; }
 .lock-err { color: var(--danger); min-height: 16px; font-size: 12px; }
-.macro-head { display: flex; gap: 2px; padding: 4px 4px 6px; }
-.macro-head .seg { flex: 1; padding: 3px 4px; font-size: 12px; background: transparent; border-color: var(--border); }
-.macro-head .seg.on { background: var(--raise); border-color: var(--accent); }
+.macro-head { display: flex; align-items: center; gap: 4px; padding: 2px 4px 6px 8px; }
+.macro-cap { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.macro-group { display: flex; align-items: center; gap: 4px; padding: 5px 6px; margin-top: 4px; cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; user-select: none; }
+.macro-group:hover { color: var(--text); }
+.mg-chev { display: flex; transition: transform .12s; }
+.macro-group.closed .mg-chev { transform: rotate(-90deg); }
+.mg-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-n { font-weight: 400; opacity: .7; }
 .macro.drop { box-shadow: inset 0 2px 0 var(--accent); }
 .macro .mini.on { color: var(--accent); }
 .macro-sess { max-height: 130px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
@@ -728,3 +733,6 @@ select.tn-in { padding: 2px 4px; }
 .sd-foot { padding: 12px 18px 14px; border-top: 1px solid var(--g-2a2a2a); gap: 8px; }
 .sd-foot .spacer { flex: 1; }
 .modal.std .set-tabs { margin-top: -16px; }
+/* macros: os botões de ação só aparecem ao passar o mouse, para o nome caber (o fixado continua visível) */
+.macro .mini { display: none; }
+.macro .mini.on, .macro:hover .mini, .macro:focus-within .mini { display: inline-flex; }
