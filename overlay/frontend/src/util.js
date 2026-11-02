@@ -66,9 +66,38 @@ export const parentPath = (p) => p.replace(/\/[^/]+\/?$/, '') || '/'
 export const cleanErr = (e) => String(e && e.message ? e.message : e).replace(/^Error: /, '')
 
 // ------------------------------------------------------------------ modais
+// Todas as janelas seguem o mesmo modelo: barra de título com X, corpo rolável e botões fixos no rodapé.
+// Quem chama passa o conteúdo de sempre (um h2 de título, o corpo e um div.btns); aqui ele é montado.
+// A janela de sessão e a de túneis (classe sdlg) já montam a própria estrutura.
+const DISMISS = /^(Cancelar|Fechar|Depois|Recusar)/
+
+/** Fecha a janela como o botão "Cancelar" dela faria (para a pergunta não ficar sem resposta). */
+export function dismissModal() {
+  const b = [...document.querySelectorAll('#overlay .modal .btns button, #overlay .modal .sd-foot button')]
+    .find((x) => DISMISS.test(x.textContent.trim()))
+  if (b) b.click()
+  else closeModal()
+}
+
 export function openModal(content, cls = '') {
   const ov = $('overlay')
-  ov.replaceChildren(h('div', { class: 'modal ' + cls }, content))
+  const items = [].concat(content).flat(Infinity).filter(Boolean)
+  const std = !/\b(sdlg|about-modal)\b/.test(cls)
+  let kids = items
+  if (std) {
+    const first = items[0]
+    const titled = first && first.tagName === 'H2' && !first.classList.contains('sub')
+    const foot = items.find((el) => el.classList && el.classList.contains('btns'))
+    const body = items.filter((el) => el !== foot && !(titled && el === first))
+    kids = []
+    if (titled) {
+      kids.push(h('div', { class: 'sd-title' }, h('span', { class: 'md-ttl' }, first.textContent),
+        h('button', { class: 'sd-x', title: 'Fechar', onclick: dismissModal }, icon('close', 15))))
+    }
+    kids.push(h('div', { class: 'md-body' }, ...body))
+    if (foot) kids.push(foot)
+  }
+  ov.replaceChildren(h('div', { class: 'modal ' + (std ? 'std ' : '') + cls }, kids))
   ov.classList.remove('hidden')
 }
 export function closeModal() {

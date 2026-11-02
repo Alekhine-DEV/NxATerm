@@ -180,13 +180,13 @@ export async function syncDialog(hooks) {
     ...field('Destino', provider),
     box,
     h('div', { class: 'btns' },
-      h('button', { onclick: () => { saveSettings(); persistSecrets(); closeModal() } }, 'Fechar'),
-      h('span', { class: 'spacer' }),
       btn('Baixar e substituir', run(async () => {
         if (!(await confirmBox('Substituir tudo', 'As sessões e macros deste computador serão trocadas pelas da cópia.', 'Substituir'))) { syncDialog(hooks); return 'Cancelado' }
         return pull('replace', sy.withSettings, hooks)
       })),
       btn('Baixar e mesclar', run(() => pull('merge', sy.withSettings, hooks))),
+      h('span', { class: 'spacer' }),
+      h('button', { onclick: () => { saveSettings(); persistSecrets(); closeModal() } }, 'Fechar'),
       btn('Enviar', run(push), 'primary')),
   ], 'sync-modal')
 }

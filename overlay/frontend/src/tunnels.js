@@ -460,9 +460,8 @@ function editTunnel(existing) {
       opts),
     h('div', { class: 'sd-foot' },
       h('span', { class: 'spacer' }),
-      h('button', { class: 'sd-ok', onclick: save }, icon('check', 17), ' Salvar'),
-      h('button', { class: 'sd-cancel', onclick: show }, icon('close', 17), ' Cancelar'),
-      h('span', { class: 'spacer' })),
+      h('button', { onclick: show }, 'Cancelar'),
+      h('button', { class: 'primary', onclick: save }, 'Salvar')),
   ], 'sdlg tnedit')
 }
 

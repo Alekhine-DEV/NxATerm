@@ -229,9 +229,8 @@ export function editSession(existing, onChange, preset) {
     h('div', { class: 'sd-foot' },
       existing ? h('button', { class: 'danger', onclick: remove }, 'Excluir') : null,
       h('span', { class: 'spacer' }),
-      h('button', { class: 'sd-ok', onclick: save }, icon('check', 17), ' OK'),
-      h('button', { class: 'sd-cancel', onclick: closeModal }, icon('close', 17), ' Cancelar'),
-      h('span', { class: 'spacer' })),
+      h('button', { onclick: closeModal }, 'Cancelar'),
+      h('button', { class: 'primary', onclick: save }, 'Salvar')),
   ], 'sdlg')
 }
 

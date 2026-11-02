@@ -11,7 +11,7 @@ import * as Runtime from '@wailsio/runtime'
 import { Api } from './api.js'
 import {
   $, h, icon, toast, payload, b64ToBytes, fmtSize, fmtRate, fmtUptime, cleanErr,
-  openModal, closeModal, modalOpen, promptBox, confirmBox, showMenu, closeMenu, attachTip, hideTip, comboOpen,
+  openModal, closeModal, dismissModal, modalOpen, promptBox, confirmBox, showMenu, closeMenu, attachTip, hideTip, comboOpen,
 } from './util.js'
 import { settings, loadSettings, saveSettings, termOptions } from './settings.js'
 import { editSession, editMacro, keygenDialog, aboutDialog, shortcutsDialog } from './dialogs.js'
@@ -1439,7 +1439,7 @@ function initEvents() {
 
   document.addEventListener('keydown', (e) => {
     if (capture.active) return
-    if (e.key === 'Escape' && modalOpen()) { if (!comboOpen()) closeModal(); return }
+    if (e.key === 'Escape' && modalOpen()) { if (!comboOpen()) dismissModal(); return }
     if (modalOpen()) return
     if (isShortcut(e) && handleShortcut(e)) { e.preventDefault(); e.stopPropagation() }
   }, true)
