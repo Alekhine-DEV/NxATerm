@@ -24,7 +24,7 @@ import { initConnect } from './connect.js'
 import { attachHighlight } from './highlight.js'
 import { createZmodem } from './zmodemfx.js'
 import { createTrzsz } from './trzszfx.js'
-import { openTunnelWindow } from './tunnels.js'
+import { openTunnelWindow, autoStartTunnels, onTunnelsChange } from './tunnels.js'
 import { setLigatures } from './ligatures.js'
 import { batchDialog } from './batch.js'
 import { syncDialog, syncOnOpen } from './sync.js'
@@ -222,15 +222,14 @@ const syncHooks = () => ({
 })
 function openSync() { syncDialog(syncHooks()) }
 
-function openTunnels() {
-  openTunnelWindow({
-    sessions: () => sessions,
-    current: () => {
-      const t = activeTab()
-      return t && hasSSH(t.session) ? t.session : null
-    },
-  })
-}
+const tunnelCtx = () => ({
+  sessions: () => sessions,
+  current: () => {
+    const t = activeTab()
+    return t && hasSSH(t.session) ? t.session : null
+  },
+})
+function openTunnels() { openTunnelWindow(tunnelCtx()) }
 
 async function importSSHConfig() {
   try {
@@ -1338,6 +1337,8 @@ function buildStatusbar() {
     seg('user', 'user', 'Usuário'),
     seg('disk', 'disk', 'Uso do disco (/)', 'sb-mon'),
     h('span', { class: 'sb-fill' }),
+    h('span', { class: 'sb-seg sb-tun hidden', title: 'Túneis SSH ativos (clique para abrir)', onclick: () => openTunnels() },
+      icon('tunnel', 14), (SB.tun = h('span', { class: 'sb-val' }, '0'))),
     h('span', { class: 'sb-seg muted', title: 'Layout' }, (SB.layout = h('span', { class: 'sb-val' }, ''))))
 }
 
@@ -1483,6 +1484,11 @@ async function init() {
   await initConnect(openSession)
   initAi({ activeTab, allTabs, openSession, sessions: () => sessions })
   setTimeout(() => syncOnOpen(syncHooks()), 2500)
+  onTunnelsChange((n) => {
+    SB.tun.textContent = String(n)
+    SB.tun.parentElement.classList.toggle('hidden', n === 0)
+  })
+  setTimeout(() => autoStartTunnels(tunnelCtx()).catch(() => {}), 2000)
   if (settings.checkUpdates) setTimeout(() => checkUpdates({ silent: true, openURL }), 6000)
 }
 

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -42,6 +43,19 @@ func (t *Tunnel) Stop() { t.once.Do(func() { t.ln.Close() }) }
 
 // Start abre o túnel. Só escuta em 127.0.0.1.
 func Start(c Client, kind string, listenPort int, destHost string, destPort int) (*Tunnel, error) {
+	return StartBind(c, kind, "127.0.0.1", listenPort, destHost, destPort)
+}
+
+// StartBind é o Start com o endereço de escuta do lado local (local e dinâmico): "127.0.0.1" só
+// deixa este computador usar o túnel, "0.0.0.0" abre para a rede. No túnel remoto o endereço é o
+// do servidor e continua sendo 127.0.0.1.
+func StartBind(c Client, kind, bind string, listenPort int, destHost string, destPort int) (*Tunnel, error) {
+	if bind == "" {
+		bind = "127.0.0.1"
+	}
+	if bind != "127.0.0.1" && bind != "0.0.0.0" {
+		return nil, errors.New("endereço de escuta inválido")
+	}
 	if listenPort < 1 || listenPort > 65535 {
 		return nil, errors.New("porta de escuta inválida (1-65535)")
 	}
@@ -53,24 +67,28 @@ func Start(c Client, kind string, listenPort int, destHost string, destPort int)
 			return nil, errors.New("porta de destino inválida (1-65535)")
 		}
 	}
-	listen := net.JoinHostPort("127.0.0.1", strconv.Itoa(listenPort))
+	listen := net.JoinHostPort(bind, strconv.Itoa(listenPort))
+	remoteListen := net.JoinHostPort("127.0.0.1", strconv.Itoa(listenPort))
 	dest := net.JoinHostPort(destHost, strconv.Itoa(destPort))
 	t := &Tunnel{Kind: kind, ListenPort: listenPort, DestHost: destHost, DestPort: destPort}
 	var err error
 	switch kind {
 	case Local:
 		t.ln, err = net.Listen("tcp", listen)
-		t.Desc = fmt.Sprintf("local 127.0.0.1:%d → %s", listenPort, dest)
+		t.Desc = fmt.Sprintf("local %s → %s", listen, dest)
 	case Remote:
-		t.ln, err = c.Listen("tcp", listen)
-		t.Desc = fmt.Sprintf("remoto (servidor) 127.0.0.1:%d → %s", listenPort, dest)
+		t.ln, err = c.Listen("tcp", remoteListen)
+		t.Desc = fmt.Sprintf("remoto (servidor) %s → %s", remoteListen, dest)
 	case Dynamic:
 		t.ln, err = net.Listen("tcp", listen)
-		t.Desc = fmt.Sprintf("SOCKS5 127.0.0.1:%d", listenPort)
+		t.Desc = fmt.Sprintf("SOCKS5 %s", listen)
 	default:
 		return nil, errors.New("tipo de túnel desconhecido")
 	}
 	if err != nil {
+		if inUse(err) {
+			return nil, fmt.Errorf("a porta %d já está em uso", listenPort)
+		}
 		return nil, fmt.Errorf("não foi possível abrir o túnel: %w", err)
 	}
 	go func() {
@@ -104,6 +122,12 @@ func Start(c Client, kind string, listenPort int, destHost string, destPort int)
 		}
 	}()
 	return t, nil
+}
+
+// inUse diz se o erro de escuta é "porta ocupada" (a mensagem muda entre Linux, macOS e Windows).
+func inUse(err error) bool {
+	m := strings.ToLower(err.Error())
+	return strings.Contains(m, "address already in use") || strings.Contains(m, "only one usage of each socket address")
 }
 
 // pipe copia nos dois sentidos e fecha tudo quando um lado terminar.

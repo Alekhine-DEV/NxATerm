@@ -221,6 +221,8 @@ export function closeDropdown() {
 function onDocDown(e) {
   if (ddList && !ddList.contains(e.target) && e.target !== ddOwner) closeDropdown()
 }
+// a lista é fixa na página: se o campo some (troca de aba, janela fechada), ela vai junto
+new MutationObserver(() => { if (ddOwner && !ddOwner.isConnected) closeDropdown() }).observe(document.body, { childList: true, subtree: true })
 
 /**
  * Abre a lista sob o elemento "anchor". items: [{ value, label, disabled }].
@@ -309,8 +311,8 @@ export function combo(input, getItems) {
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
   }
-  input.addEventListener('mousedown', () => { if (ddOwner !== input) setTimeout(() => open(true), 0) })
-  input.addEventListener('focus', () => open(true))
+  // abre ao clicar (de novo fecha) ou com a seta; entrar no campo por foco automático não abre a lista
+  input.addEventListener('mousedown', () => { ddOwner === input ? closeDropdown() : setTimeout(() => open(true), 0) })
   input.addEventListener('input', () => { if (ddOwner === input) open(false) })
   input.addEventListener('keydown', (e) => {
     const isOpen = ddOwner === input && ctl

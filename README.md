@@ -41,7 +41,7 @@ Os instaladores não são assinados digitalmente: o Windows pode avisar "editor 
 
 **Automação e organização**
 - MultiExec e execução de comandos em lote em vários servidores
-- Gerenciador gráfico de túneis SSH (local, remoto e dinâmico SOCKS) com lista, iniciar/parar todos e ordem; macros e comandos rápidos (fixar, ordenar, vincular a sessões, importar e exportar)
+- Gerenciador gráfico de túneis SSH (local, remoto e dinâmico SOCKS): iniciar ao abrir, reconexão automática, escuta opcional para a rede e indicador na barra de status; macros e comandos rápidos (fixar, ordenar, vincular a sessões, importar e exportar)
 - Cor, tags e descrição nas sessões, histórico e espaços de trabalho
 - Senha de abertura do app: além de travar a interface, criptografa os dados guardados (AES-256-GCM); perder a senha significa perder esses dados
 - Bandeja do sistema e atalho global (Windows, Linux em X11 e macOS; no Wayland use um atalho do sistema que execute `nxaterm`)

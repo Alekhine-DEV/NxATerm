@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -256,5 +257,43 @@ func TestValidation(t *testing.T) {
 	defer l.Close()
 	if _, err := Start(c, Local, l.Addr().(*net.TCPAddr).Port, "x", 80); err == nil {
 		t.Error("porta ocupada devia falhar")
+	}
+}
+
+func TestBindAndInUse(t *testing.T) {
+	c := client(t)
+	target := echo(t)
+	lp := freePort(t)
+	tn, err := StartBind(c, Local, "0.0.0.0", lp, "127.0.0.1", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tn.Stop()
+	if addr := tn.ln.Addr().(*net.TCPAddr); !addr.IP.IsUnspecified() {
+		t.Fatalf("devia escutar em todas as interfaces, escuta em %v", addr)
+	}
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", lp))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundtrip(t, conn, "olá rede")
+	conn.Close()
+
+	// mesma porta de novo: mensagem clara
+	if _, err := Start(c, Local, lp, "127.0.0.1", target); err == nil || !strings.Contains(err.Error(), "já está em uso") {
+		t.Fatalf("esperava 'já está em uso', veio %v", err)
+	}
+	// o padrão continua sendo só 127.0.0.1
+	lp2 := freePort(t)
+	t2, err := Start(c, Dynamic, lp2, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer t2.Stop()
+	if addr := t2.ln.Addr().(*net.TCPAddr); !addr.IP.IsLoopback() {
+		t.Fatalf("devia escutar só em 127.0.0.1, escuta em %v", addr)
+	}
+	if _, err := StartBind(c, Local, "10.1.2.3", lp2, "h", 1); err == nil {
+		t.Fatal("endereço de escuta arbitrário devia ser recusado")
 	}
 }

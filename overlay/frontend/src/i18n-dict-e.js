@@ -261,4 +261,17 @@ Informe o servidor SSH¦Enter the SSH server¦Indique el servidor SSH
 Porta SSH inválida (1-65535)¦Invalid SSH port (1-65535)¦Puerto SSH no válido (1-65535)
 Informe o login SSH¦Enter the SSH login¦Indique el usuario SSH
 Informe a chave privada¦Enter the private key¦Indique la clave privada
+Nova versão {0} disponível (Sobre > Verificar atualizações)¦New version {0} available (About > Check for updates)¦Nueva versión {0} disponible (Acerca de > Buscar actualizaciones)
+a porta {0} já está em uso¦port {0} is already in use¦el puerto {0} ya está en uso
+endereço de escuta inválido¦invalid listen address¦dirección de escucha no válida
+Túneis SSH ativos (clique para abrir)¦Active SSH tunnels (click to open)¦Túneles SSH activos (clic para abrir)
+Iniciar ao abrir o NxATerm¦Start when NxATerm opens¦Iniciar al abrir NxATerm
+Reconectar sozinho se a conexão cair¦Reconnect automatically if the connection drops¦Reconectar solo si la conexión se cae
+Permitir conexões de outros computadores da rede¦Allow connections from other computers on the network¦Permitir conexiones de otros equipos de la red
+Escuta em 0.0.0.0 em vez de só 127.0.0.1: qualquer máquina da rede poderá usar este túnel¦Listens on 0.0.0.0 instead of only 127.0.0.1: any machine on the network will be able to use this tunnel¦Escucha en 0.0.0.0 en lugar de solo 127.0.0.1: cualquier equipo de la red podrá usar este túnel
+Tentando reconectar (clique para cancelar)¦Trying to reconnect (click to cancel)¦Intentando reconectar (clic para cancelar)
+Túnel "{0}" caiu: reconectando...¦Tunnel "{0}" dropped: reconnecting...¦El túnel "{0}" se cayó: reconectando...
+Túnel "{0}" reconectado¦Tunnel "{0}" reconnected¦Túnel "{0}" reconectado
+Túnel "{0}": {1}¦Tunnel "{0}": {1}¦Túnel "{0}": {1}
+A porta {0} já é usada pelo túnel "{1}"¦Port {0} is already used by the tunnel "{1}"¦El puerto {0} ya lo usa el túnel "{1}"
 `

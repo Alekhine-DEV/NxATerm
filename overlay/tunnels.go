@@ -32,6 +32,10 @@ type TunnelDef struct {
 	User       string `json:"user"`
 	AuthMethod string `json:"authMethod"` // "password" ou "key"
 	KeyPath    string `json:"keyPath"`
+	// opções do túnel (a janela decide o que fazer com AutoStart e Reconnect; o backend só guarda)
+	AutoStart bool `json:"autoStart"` // iniciar ao abrir o NxATerm
+	Reconnect bool `json:"reconnect"` // reconectar sozinho quando a conexão cair
+	AllowLAN  bool `json:"allowLan"`  // escutar em 0.0.0.0 (local e dinâmico) em vez de só 127.0.0.1
 }
 
 // TunnelInfo descreve um túnel ativo.
@@ -127,7 +131,7 @@ func (a *TermService) tunnelSession(d TunnelDef) (store.Session, error) {
 //	remote  : 127.0.0.1:listenPort (servidor) -> destHost:destPort (visto daqui)
 //	dynamic : proxy SOCKS5 em 127.0.0.1:listenPort (aqui), saindo pelo servidor
 //
-// Os túneis só escutam em 127.0.0.1. Evento "tunnel:closed" (com o ID do túnel salvo) quando a
+// Por padrão os túneis só escutam em 127.0.0.1 (AllowLAN abre local e dinâmico para a rede). Evento "tunnel:closed" (com o ID do túnel salvo) quando a
 // conexão cai.
 func (a *TermService) TunnelOpen(d TunnelDef, secret string) (TunnelInfo, error) {
 	if d.ID == "" {
@@ -150,7 +154,11 @@ func (a *TermService) TunnelOpen(d TunnelDef, secret string) (TunnelInfo, error)
 	if err != nil {
 		return TunnelInfo{}, err
 	}
-	tn, err := tunnel.Start(client, d.Kind, d.ListenPort, d.DestHost, d.DestPort)
+	bind := "127.0.0.1"
+	if d.AllowLAN && d.Kind != tunnel.Remote {
+		bind = "0.0.0.0"
+	}
+	tn, err := tunnel.StartBind(client, d.Kind, bind, d.ListenPort, d.DestHost, d.DestPort)
 	if err != nil {
 		client.Close()
 		return TunnelInfo{}, err

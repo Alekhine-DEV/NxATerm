@@ -1,6 +1,6 @@
 // Verificação de atualização (consulta a última versão publicada no GitHub).
 import { Api } from './api.js'
-import { h, toast, cleanErr, openModal, closeModal } from './util.js'
+import { h, toast, cleanErr, openModal, closeModal, modalOpen } from './util.js'
 import { settings, saveSettings } from './settings.js'
 
 /** silent: só mostra algo se houver versão nova (e que o usuário não tenha ignorado). */
@@ -17,6 +17,8 @@ export async function checkUpdates({ silent, openURL }) {
     return
   }
   if (silent && settings.skipVersion === info.latest) return
+  // a verificação silenciosa nunca pode atropelar uma janela que o usuário está preenchendo
+  if (silent && modalOpen()) { toast(`Nova versão ${info.latest} disponível (Sobre > Verificar atualizações)`); return }
   const notes = (info.notes || '').trim()
   openModal([
     h('h2', {}, 'Nova versão disponível'),

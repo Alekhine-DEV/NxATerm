@@ -2,7 +2,7 @@
 // com o desenho do caminho dos dados.
 import * as Runtime from '@wailsio/runtime'
 import { Api } from './api.js'
-import { h, icon, toast, cleanErr, openModal, closeModal, confirmBox, promptBox, combo } from './util.js'
+import { h, icon, toast, cleanErr, openModal, closeModal, confirmBox, promptBox, combo, modalOpen } from './util.js'
 import { memo, memoKey } from './memo.js'
 import * as art from './tunnelart.js'
 
@@ -18,12 +18,80 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 const portOk = (n) => Number.isInteger(n) && n >= 1 && n <= 65535
 const visible = () => !!document.querySelector('.tnwin')
 
-Runtime.Events.On('tunnel:closed', (ev) => {
+// ---- quem quer ficar ligado: o que o usuário iniciou e não parou (base da reconexão automática)
+const want = new Set() // ids dos túneis que devem estar no ar
+const secrets = new Map() // id -> senha usada (só na memória, só para túneis com reconexão)
+const retry = new Map() // id -> { timer, n }
+const listeners = new Set()
+export const tunnelCount = () => active.size
+/** Avisa quando muda quantos túneis estão ativos (usado pelo indicador da barra de status). */
+export function onTunnelsChange(fn) { listeners.add(fn); return () => listeners.delete(fn) }
+const notify = () => listeners.forEach((fn) => { try { fn(active.size) } catch { /* ouvinte com erro */ } })
+// A lista só é redesenhada quando é a janela que o usuário está vendo (ou voltou a ser, depois de uma pergunta de senha
+// feita a partir dela); nunca por cima do editor nem de outra janela.
+let winOpen = false // a lista estava na tela quando a pergunta de senha abriu
+let prompting = 0
+const refresh = () => {
+  notify()
+  if (prompting) return
+  if (visible()) return show()
+  if (winOpen && !modalOpen()) { winOpen = false; show() }
+}
+
+const BACKOFF = [3, 6, 12, 30, 60] // segundos entre tentativas de reconexão
+function dropWant(id) {
+  want.delete(id)
+  secrets.delete(id)
+  const r = retry.get(id)
+  if (r) { clearTimeout(r.timer); retry.delete(id) }
+  busy.delete(id)
+}
+
+function scheduleRetry(id) {
+  const d = defs.find((x) => x.id === id)
+  if (!d || !d.reconnect || !want.has(id)) return
+  const r = retry.get(id) || { n: 0, timer: 0 }
+  const secs = BACKOFF[Math.min(r.n, BACKOFF.length - 1)]
+  r.n++
+  busy.add(id)
+  r.timer = setTimeout(async () => {
+    if (!want.has(id) || active.has(id)) return
+    try {
+      await Api.TunnelOpen(d, secrets.get(id) || '')
+      retry.delete(id)
+      busy.delete(id)
+      await refreshActive()
+      toast(`Túnel "${d.name}" reconectado`)
+    } catch (e) {
+      const msg = String(e)
+      if (/unable to authenticate|PASSPHRASE_REQUIRED/.test(msg)) {
+        // senha recusada: insistir só trava a conta no servidor
+        dropWant(id)
+        toast(`Túnel "${d.name}": ${cleanErr(e)}`, true)
+      } else {
+        retry.set(id, r)
+        scheduleRetry(id)
+        return refresh()
+      }
+    }
+    refresh()
+  }, secs * 1000)
+  retry.set(id, r)
+}
+
+Runtime.Events.On('tunnel:closed', async (ev) => {
   const id = ev && typeof ev === 'object' && 'data' in ev ? ev.data : ev
+  if (!defs.length) await load()
   const d = defs.find((x) => x.id === id)
   active.delete(id)
-  if (d) toast(`Túnel "${d.name}" desconectado`, true)
-  if (visible()) show()
+  if (d && d.reconnect && want.has(id)) {
+    toast(`Túnel "${d.name}" caiu: reconectando...`, true)
+    scheduleRetry(id)
+  } else {
+    dropWant(id)
+    if (d) toast(`Túnel "${d.name}" desconectado`, true)
+  }
+  refresh()
 })
 
 async function load() {
@@ -36,7 +104,16 @@ async function load() {
 
 async function refreshActive() {
   active.clear()
-  try { for (const t of (await Api.TunnelList()) || []) active.set(t.defId, t) } catch { /* sem lista */ }
+  try { for (const t of (await Api.TunnelList()) || []) { active.set(t.defId, t); want.add(t.defId) } } catch { /* sem lista */ }
+  notify()
+}
+
+/** Ao abrir o NxATerm: inicia os túneis marcados com "iniciar ao abrir". */
+export async function autoStartTunnels(c) {
+  ctx = c
+  await load()
+  const cache = new Map()
+  for (const d of defs) if (d.autoStart && !active.has(d.id)) await start(d, cache)
 }
 
 async function persist() {
@@ -62,11 +139,13 @@ function show() {
 
   const rows = defs.map((d, i) => {
     const on = active.has(d.id)
-    const wait = busy.has(d.id)
+    const retrying = retry.has(d.id)
+    const wait = busy.has(d.id) && !retrying
     const run = h('button', {
-      class: 'tn-run' + (on ? ' on' : ''), disabled: wait, title: on ? 'Parar' : 'Iniciar',
-      onclick: () => (on ? stop(d) : start(d, new Map())),
-    }, icon(wait ? 'clock' : on ? 'stop' : 'play', 16))
+      class: 'tn-run' + (on ? ' on' : ''), disabled: wait,
+      title: retrying ? 'Tentando reconectar (clique para cancelar)' : on ? 'Parar' : 'Iniciar',
+      onclick: () => (on || retrying ? stop(d) : start(d, new Map())),
+    }, icon(wait || retrying ? 'clock' : on ? 'stop' : 'play', 16))
     return h('div', { class: 'tn-row' + (on ? ' on' : '') },
       cell('name', h('span', { class: 'tn-dot' }), d.name),
       cell('type', KINDS[d.kind] || d.kind),
@@ -107,6 +186,7 @@ async function move(i, delta) {
 
 async function remove(d) {
   if (!(await confirmBox('Excluir túnel', `Excluir o túnel "${d.name}"?`))) return show()
+  dropWant(d.id)
   const a = active.get(d.id)
   if (a) { try { await Api.TunnelStop(a.id) } catch { /* já parado */ } active.delete(d.id) }
   defs = defs.filter((x) => x.id !== d.id)
@@ -121,11 +201,16 @@ async function secretFor(d, kind, cache, force) {
     if (memo.has(key)) return memo.get(key)
     if (cache.has(key)) return cache.get(key)
   }
-  const r = await promptBox({
-    title: kind === 'pw' ? 'Senha' : 'Chave protegida',
-    label: kind === 'pw' ? `Senha de ${d.user}@${d.host}` : 'Senha da chave privada',
-    secret: true, ok: 'Conectar', remember: 'Memorizar até fechar o NxATerm',
-  })
+  prompting++
+  if (visible()) winOpen = true
+  let r
+  try {
+    r = await promptBox({
+      title: kind === 'pw' ? 'Senha' : 'Chave protegida',
+      label: kind === 'pw' ? `Senha de ${d.user}@${d.host}` : 'Senha da chave privada',
+      secret: true, ok: 'Conectar', remember: 'Memorizar até fechar o NxATerm',
+    })
+  } finally { prompting-- }
   if (r === null || r === undefined) throw CANCELED
   if (r.remember) memo.set(key, r.value)
   cache.set(key, r.value)
@@ -136,7 +221,10 @@ async function openOne(d, cache) {
   let secret = d.authMethod === 'password' ? await secretFor(d, 'pw', cache) : ''
   for (let attempt = 0; ; attempt++) {
     try {
-      return await Api.TunnelOpen(d, secret)
+      const info = await Api.TunnelOpen(d, secret)
+      want.add(d.id)
+      if (d.reconnect && secret) secrets.set(d.id, secret)
+      return info
     } catch (e) {
       const msg = String(e)
       if (attempt >= 2) throw e
@@ -156,7 +244,7 @@ async function openOne(d, cache) {
 async function start(d, cache) {
   if (active.has(d.id) || busy.has(d.id)) return
   busy.add(d.id)
-  show()
+  refresh()
   try {
     await openOne(d, cache)
   } catch (e) {
@@ -165,15 +253,17 @@ async function start(d, cache) {
     busy.delete(d.id)
   }
   await refreshActive()
-  show()
+  refresh()
 }
 
 async function stop(d) {
+  dropWant(d.id)
   const a = active.get(d.id)
-  if (!a) return
-  try { await Api.TunnelStop(a.id) } catch (e) { toast(cleanErr(e), true) }
-  await refreshActive()
-  show()
+  if (a) {
+    try { await Api.TunnelStop(a.id) } catch (e) { toast(cleanErr(e), true) }
+    await refreshActive()
+  }
+  refresh()
 }
 
 async function startAll() {
@@ -182,9 +272,10 @@ async function startAll() {
 }
 
 async function stopAll() {
+  for (const id of [...want]) dropWant(id)
   for (const a of [...active.values()]) { try { await Api.TunnelStop(a.id) } catch { /* já parado */ } }
   await refreshActive()
-  show()
+  refresh()
 }
 
 // ------------------------------------------------------------------ editor
@@ -197,7 +288,8 @@ const CAPTION = {
 function editTunnel(existing) {
   const t = {
     id: uid(), name: '', kind: 'local', listenPort: 0, destHost: '', destPort: 0, sessionId: '',
-    host: '', port: 22, user: '', authMethod: 'password', keyPath: '', ...(existing || {}),
+    host: '', port: 22, user: '', authMethod: 'password', keyPath: '',
+    autoStart: false, reconnect: true, allowLan: false, ...(existing || {}),
   }
   if (!existing) {
     const cur = ctx.current()
@@ -325,11 +417,25 @@ function editTunnel(existing) {
   radios.append(...kinds)
   draw()
 
+  const flag = (key, text, hint) => {
+    const cb = h('input', { type: 'checkbox', checked: !!t[key] })
+    cb.addEventListener('change', () => { t[key] = cb.checked })
+    return h('label', { class: 'check', title: hint || '' }, cb, text)
+  }
+  const lan = flag('allowLan', 'Permitir conexões de outros computadores da rede', 'Escuta em 0.0.0.0 em vez de só 127.0.0.1: qualquer máquina da rede poderá usar este túnel')
+  const opts = h('div', { class: 'tn-opts' },
+    flag('autoStart', 'Iniciar ao abrir o NxATerm'),
+    flag('reconnect', 'Reconectar sozinho se a conexão cair'), lan)
+  const syncLan = () => { lan.style.display = t.kind === 'remote' ? 'none' : '' }
+  radios.addEventListener('change', syncLan)
+  syncLan()
+
   const save = async () => {
     const e = check(t)
     if (e) return toast(e, true)
     t.name = name.value.trim() || `${KINDS[t.kind].split(' ')[0]} ${t.listenPort}`
     if (t.kind === 'dynamic') { t.destHost = ''; t.destPort = 0 }
+    if (t.kind === 'remote') t.allowLan = false
     t.host = t.host.trim()
     t.user = t.user.trim()
     t.destHost = t.destHost.trim()
@@ -350,7 +456,8 @@ function editTunnel(existing) {
     h('div', { class: 'sd-title' }, h('span', { class: 'tn-ttl' }, icon('tunnel', 15), existing ? ' Editar túnel SSH' : ' Novo túnel SSH'),
       h('button', { class: 'sd-x', title: 'Fechar', onclick: show }, icon('close', 15))),
     h('div', { class: 'tn-edit' }, radios, h('div', { class: 'tn-stagewrap' }, stage),
-      h('div', { class: 'tn-name' }, h('label', {}, 'Nome'), name)),
+      h('div', { class: 'tn-name' }, h('label', {}, 'Nome'), name),
+      opts),
     h('div', { class: 'sd-foot' },
       h('span', { class: 'spacer' }),
       h('button', { class: 'sd-ok', onclick: save }, icon('check', 17), ' Salvar'),
@@ -361,6 +468,11 @@ function editTunnel(existing) {
 
 function check(t) {
   if (!portOk(t.listenPort)) return 'Informe a porta encaminhada (1-65535)'
+  if (t.kind !== 'remote') {
+    // dois túneis locais/dinâmicos não podem escutar na mesma porta deste computador
+    const other = defs.find((x) => x.id !== t.id && x.kind !== 'remote' && x.listenPort === t.listenPort)
+    if (other) return `A porta ${t.listenPort} já é usada pelo túnel "${other.name}"`
+  }
   if (t.kind !== 'dynamic') {
     if (!t.destHost.trim()) return t.kind === 'local' ? 'Informe o servidor remoto' : 'Informe o servidor local'
     if (!portOk(t.destPort)) return t.kind === 'local' ? 'Informe a porta remota (1-65535)' : 'Informe a porta local (1-65535)'
