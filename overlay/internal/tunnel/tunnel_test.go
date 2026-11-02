@@ -279,8 +279,8 @@ func TestBindAndInUse(t *testing.T) {
 	roundtrip(t, conn, "olá rede")
 	conn.Close()
 
-	// mesma porta de novo: mensagem clara
-	if _, err := Start(c, Local, lp, "127.0.0.1", target); err == nil || !strings.Contains(err.Error(), "já está em uso") {
+	// mesma porta e mesmo endereço de novo: mensagem clara (no Windows 127.0.0.1 convive com 0.0.0.0, por isso o mesmo endereço)
+	if _, err := StartBind(c, Local, "0.0.0.0", lp, "127.0.0.1", target); err == nil || !strings.Contains(err.Error(), "já está em uso") {
 		t.Fatalf("esperava 'já está em uso', veio %v", err)
 	}
 	// o padrão continua sendo só 127.0.0.1
