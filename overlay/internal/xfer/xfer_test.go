@@ -3,10 +3,12 @@ package xfer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -272,5 +274,40 @@ func TestMkdirAllAndLstat(t *testing.T) {
 	}
 	if _, err := Lstat(Local{}, filepath.Join(d, "nao")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("erro = %v", err)
+	}
+}
+
+func TestScanRunsAlongside(t *testing.T) {
+	src, dst := t.TempDir(), t.TempDir()
+	for i := 0; i < 20; i++ {
+		write(t, filepath.Join(src, "d", fmt.Sprintf("f%d.txt", i)), "12345")
+	}
+	var mu sync.Mutex
+	var gotFinal, gotOK bool
+	var gotBytes int64
+	var lastTotal int64
+	st, err := Copy(context.Background(), Local{}, Local{}, src, filepath.Join(dst, "o"), Options{
+		Policy:   Overwrite,
+		Progress: func(_, tt int64, _ string) { lastTotal = tt },
+		Scan: func(b int64, _ int, final, ok bool) {
+			mu.Lock()
+			defer mu.Unlock()
+			if final {
+				gotFinal, gotOK, gotBytes = true, ok, b
+			}
+		},
+	})
+	if err != nil || st.Files != 20 {
+		t.Fatalf("%v %+v", err, st)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	// a soma pode ser interrompida se a cópia acabar antes; então o total final
+	// tem de bater com o copiado de qualquer jeito
+	if lastTotal != 100 {
+		t.Fatalf("total final %d", lastTotal)
+	}
+	if gotFinal && (!gotOK || gotBytes != 100) {
+		t.Fatalf("scan final: ok=%v bytes=%d", gotOK, gotBytes)
 	}
 }

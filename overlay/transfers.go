@@ -30,6 +30,9 @@ type TransferInfo struct {
 	Err     string `json:"err"`
 	Speed   int64  `json:"speed"` // bytes por segundo
 	Current string `json:"current"`
+	// Scanning: a pasta ainda está sendo medida (o total é desconhecido).
+	Scanning  bool `json:"scanning"`
+	ScanFiles int  `json:"scanFiles"`
 }
 
 type conflictInfo struct {
@@ -170,9 +173,21 @@ func (a *TermService) runJob(j *xferJob) {
 				return "", false, ctx.Err()
 			}
 		},
+		Scan: func(bytes int64, files int, final, ok bool) {
+			j.mu.Lock()
+			j.info.Scanning = !final
+			j.info.ScanFiles = files
+			if final && ok {
+				j.info.Total = bytes
+			}
+			j.mu.Unlock()
+		},
 		Progress: func(done, total int64, cur string) {
 			j.mu.Lock()
-			j.info.Done, j.info.Total, j.info.Current = done, total, cur
+			j.info.Done, j.info.Current = done, cur
+			if total > 0 {
+				j.info.Total = total
+			}
 			j.mu.Unlock()
 		},
 	})
@@ -185,6 +200,7 @@ func (a *TermService) finishJob(j *xferJob, err error, st xfer.Stats) {
 	j.info.Files, j.info.Skipped = st.Files, st.Skipped
 	j.info.Speed = 0
 	j.info.Current = ""
+	j.info.Scanning = false
 	switch {
 	case err == nil:
 		j.info.State = "done"

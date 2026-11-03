@@ -508,6 +508,8 @@ select:focus, input.dd:focus { border-color: var(--accent); }
 .xf-ico { color: var(--muted); display: flex; }
 .xf-bar { height: 6px; border-radius: 3px; background: var(--g-33353c); overflow: hidden; }
 .xf-fill { height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+.xf-row.unknown .xf-fill { width: 30%; transition: none; animation: xf-ind 1.1s ease-in-out infinite alternate; }
+@keyframes xf-ind { from { margin-left: 0; } to { margin-left: 70%; } }
 .xf-row.done .xf-fill { background: var(--t-4ec24e); }
 .xf-row.error .xf-fill, .xf-row.canceled .xf-fill { background: var(--danger); }
 .xf-row.paused .xf-fill, .xf-row.conflict .xf-fill { background: var(--t-e6c84a); }

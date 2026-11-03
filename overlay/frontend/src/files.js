@@ -750,11 +750,17 @@ function actBtn(ico, title, fn) {
 function updateRow(r, i) {
   r.name.textContent = i.name
   r.name.title = `${i.src}\n→ ${i.dst}`
-  const pct = i.total > 0 ? Math.min(100, (i.done / i.total) * 100) : i.state === 'done' ? 100 : 0
-  r.bar.style.width = pct + '%'
-  r.el.className = 'xf-row ' + i.state
+  // Enquanto a pasta ainda está sendo medida o total é desconhecido: não dá
+  // para mostrar porcentagem, então a barra fica indeterminada.
+  const unknown = i.state === 'running' && i.scanning
+  const pct = i.total > 0 && !i.scanning ? Math.min(100, (i.done / i.total) * 100) : i.state === 'done' ? 100 : 0
+  r.bar.style.width = unknown ? '' : pct + '%'
+  r.el.className = 'xf-row ' + i.state + (unknown ? ' unknown' : '')
   let t = STATE[i.state] || i.state
-  if (i.state === 'running') {
+  if (unknown) {
+    t = `${fmtSize(i.done)} transferidos · calculando tamanho…` + (i.scanFiles ? ` (${i.scanFiles} arquivos)` : '')
+    if (i.speed > 0) t += ` · ${fmtSize(i.speed)}/s`
+  } else if (i.state === 'running') {
     t = `${fmtSize(i.done)} / ${fmtSize(i.total)} · ${Math.floor(pct)}%`
     if (i.speed > 0) t += ` · ${fmtSize(i.speed)}/s · ${fmtEta((i.total - i.done) / i.speed)}`
   } else if (i.state === 'done') {

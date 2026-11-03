@@ -12,6 +12,8 @@ import (
 	"io/fs"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -69,8 +71,12 @@ type Conflict struct {
 type Options struct {
 	Policy   string                                              // Ask (padrão), Overwrite, Skip, Rename ou Resume
 	Ask      func(Conflict) (action string, all bool, err error) // chamado quando Policy == Ask
-	Progress func(done, total int64, current string)             // pode ser nil
-	BufSize  int
+	Progress func(done, total int64, current string)             // pode ser nil; total 0 = ainda desconhecido
+	// Scan acompanha a soma do tamanho da pasta, que roda em paralelo com a
+	// cópia (em pastas grandes ela leva minutos). final=true quando terminou;
+	// ok=false se não deu para somar (o total fica desconhecido). Pode ser nil.
+	Scan    func(bytes int64, files int, final, ok bool)
+	BufSize int
 }
 
 // Stats resume o que foi copiado.
@@ -89,7 +95,7 @@ type copier struct {
 	dst    FS
 	o      Options
 	policy string
-	total  int64
+	total  atomic.Int64
 	done   int64
 	st     Stats
 	first  error
@@ -109,14 +115,34 @@ func Copy(ctx context.Context, src, dst FS, srcPath, dstPath string, o Options) 
 	if err != nil {
 		return c.st, err
 	}
-	c.total, err = c.measure(srcPath, se, 0)
-	if err != nil {
-		return c.st, err
+	endScan := func() {}
+	if !se.IsDir {
+		c.total.Store(se.Size)
+	} else {
+		// A soma do tamanho roda ao lado da cópia: percorrer uma pasta enorme
+		// antes de começar deixava a transferência parada em "0 B / 0 B".
+		if o.Scan != nil {
+			o.Scan(0, 0, false, true)
+		}
+		sctx, stop := context.WithCancel(ctx)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.scan(sctx, srcPath, se)
+		}()
+		endScan = func() { stop(); wg.Wait() }
 	}
+	defer endScan()
 	c.report("")
 	if err := c.entry(srcPath, dstPath, se, 0); err != nil {
 		return c.st, err
 	}
+	endScan()
+	if c.total.Load() < c.done {
+		c.total.Store(c.done) // a soma não terminou (ou falhou): o total é o que foi copiado
+	}
+	c.report("")
 	if c.st.Failed > 0 {
 		return c.st, fmt.Errorf("%d item(ns) com erro; o primeiro: %w", c.st.Failed, c.first)
 	}
@@ -125,37 +151,60 @@ func Copy(ctx context.Context, src, dst FS, srcPath, dstPath string, o Options) 
 
 func (c *copier) report(cur string) {
 	if c.o.Progress != nil {
-		c.o.Progress(c.done, c.total, cur)
+		c.o.Progress(c.done, c.total.Load(), cur)
 	}
 }
 
-// measure soma o tamanho de tudo que será copiado.
-func (c *copier) measure(p string, e Entry, depth int) (int64, error) {
-	if err := c.ctx.Err(); err != nil {
-		return 0, err
-	}
-	if !e.IsDir {
-		return e.Size, nil
-	}
-	if depth > maxDepth {
-		return 0, nil
-	}
-	list, err := c.src.List(p)
-	if err != nil {
-		return 0, err
-	}
+// scan soma o tamanho de tudo que será copiado, em segundo plano, avisando o
+// andamento. Erros aqui não derrubam a cópia: o total só fica desconhecido.
+func (c *copier) scan(ctx context.Context, root string, se Entry) {
+	var files int
 	var sum int64
-	for _, ch := range list {
-		if ch.IsLink && ch.IsDir {
-			continue
+	last := time.Now()
+	notify := func(final, ok bool) {
+		if c.o.Scan != nil {
+			c.o.Scan(sum, files, final, ok)
 		}
-		n, err := c.measure(c.src.Join(p, ch.Name), ch, depth+1)
-		if err != nil {
-			return 0, err
-		}
-		sum += n
 	}
-	return sum, nil
+	var walkFn func(p string, e Entry, depth int) error
+	walkFn = func(p string, e Entry, depth int) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !e.IsDir {
+			sum += e.Size
+			files++
+			return nil
+		}
+		if depth > maxDepth {
+			return nil
+		}
+		list, err := c.src.List(p)
+		if err != nil {
+			return err
+		}
+		for _, ch := range list {
+			if ch.IsLink && ch.IsDir {
+				continue
+			}
+			if err := walkFn(c.src.Join(p, ch.Name), ch, depth+1); err != nil {
+				return err
+			}
+			if time.Since(last) > 300*time.Millisecond {
+				last = time.Now()
+				notify(false, true)
+			}
+		}
+		return nil
+	}
+	if err := walkFn(root, se, 0); err != nil {
+		if ctx.Err() == nil {
+			notify(true, false)
+		}
+		return
+	}
+	c.total.Store(sum)
+	notify(true, true)
 }
 
 func (c *copier) fail(err error) {
