@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	pathpkg "path"
 	"path/filepath"
@@ -59,6 +60,7 @@ type xferJob struct {
 
 	src, dst         xfer.FS
 	srcPath, dstPath string
+	ex               xfer.Exec // comando no servidor (SSH); habilita o modo tar para pastas
 	answer           chan conflictAnswer
 }
 
@@ -89,13 +91,13 @@ func (a *TermService) emitJSON(name string, v any) {
 func (a *TermService) emitXfer(j *xferJob) { a.emitJSON("xfer:update", j.snapshot()) }
 
 // enqueue cria a transferência e a coloca na fila (até 3 rodam ao mesmo tempo).
-func (a *TermService) enqueue(tabID, dir string, src, dst xfer.FS, srcPath, dstPath, name, policy string) string {
+func (a *TermService) enqueue(tabID, dir string, src, dst xfer.FS, srcPath, dstPath, name, policy string, ex xfer.Exec) string {
 	x := a.xf
 	x.mu.Lock()
 	x.seq++
 	id := fmt.Sprintf("x%d", x.seq)
 	j := &xferJob{
-		policy: policy, src: src, dst: dst, srcPath: srcPath, dstPath: dstPath,
+		policy: policy, src: src, dst: dst, srcPath: srcPath, dstPath: dstPath, ex: ex,
 		answer: make(chan conflictAnswer, 1),
 		info:   TransferInfo{ID: id, TabID: tabID, Name: name, Dir: dir, Src: srcPath, Dst: dstPath, State: "queued"},
 	}
@@ -152,6 +154,20 @@ func (a *TermService) runJob(j *xferJob) {
 		}
 	}()
 
+	progress := func(done, total int64, cur string) {
+		j.mu.Lock()
+		j.info.Done, j.info.Current = done, cur
+		if total > 0 {
+			j.info.Total = total
+		}
+		j.mu.Unlock()
+	}
+	if st, ok, err := a.tryTar(ctx, j, progress); ok {
+		close(stop)
+		a.finishJob(j, err, st)
+		return
+	}
+
 	st, err := xfer.Copy(ctx, j.src, j.dst, j.srcPath, j.dstPath, xfer.Options{
 		Policy: pol,
 		Ask: func(c xfer.Conflict) (string, bool, error) {
@@ -182,14 +198,7 @@ func (a *TermService) runJob(j *xferJob) {
 			}
 			j.mu.Unlock()
 		},
-		Progress: func(done, total int64, cur string) {
-			j.mu.Lock()
-			j.info.Done, j.info.Current = done, cur
-			if total > 0 {
-				j.info.Total = total
-			}
-			j.mu.Unlock()
-		},
+		Progress: progress,
 	})
 	close(stop)
 	a.finishJob(j, err, st)
@@ -412,7 +421,7 @@ func (a *TermService) Upload(tabID string, localPaths []string, remoteDir string
 	var ids []string
 	for _, lp := range localPaths {
 		name := baseName(lp)
-		ids = append(ids, a.enqueue(tabID, "up", xfer.Local{}, rfs, lp, rfs.Join(remoteDir, name), name, xfer.Ask))
+		ids = append(ids, a.enqueue(tabID, "up", xfer.Local{}, rfs, lp, rfs.Join(remoteDir, name), name, xfer.Ask, t.execFn()))
 	}
 	return ids, nil
 }
@@ -433,7 +442,7 @@ func (a *TermService) Download(tabID string, remotePaths []string, localDir stri
 	var ids []string
 	for _, rp := range remotePaths {
 		name := pathpkg.Base(rp)
-		ids = append(ids, a.enqueue(tabID, "down", rfs, xfer.Local{}, rp, filepath.Join(localDir, name), name, xfer.Ask))
+		ids = append(ids, a.enqueue(tabID, "down", rfs, xfer.Local{}, rp, filepath.Join(localDir, name), name, xfer.Ask, t.execFn()))
 	}
 	return ids, nil
 }
@@ -484,7 +493,7 @@ func (a *TermService) LocalCopy(paths []string, dstDir string) ([]string, error)
 	var ids []string
 	for _, p := range paths {
 		name := filepath.Base(p)
-		ids = append(ids, a.enqueue("", "up", xfer.Local{}, xfer.Local{}, p, filepath.Join(dstDir, name), name, xfer.Ask))
+		ids = append(ids, a.enqueue("", "up", xfer.Local{}, xfer.Local{}, p, filepath.Join(dstDir, name), name, xfer.Ask, nil))
 	}
 	return ids, nil
 }
@@ -504,4 +513,75 @@ func (a *TermService) LocalMove(paths []string, dstDir string) error {
 		}
 	}
 	return nil
+}
+
+// tryTar transfere uma pasta com muitos arquivos por um único fluxo tar (muito
+// mais rápido que arquivo por arquivo pelo SFTP e bem mais leve para o disco do
+// servidor). ok=false quando não se aplica (não é pasta, o destino já existe e
+// precisa de tratamento de conflito, poucos arquivos, servidor sem tar…): aí o
+// motor normal cuida de tudo.
+func (a *TermService) tryTar(ctx context.Context, j *xferJob, progress func(done, total int64, cur string)) (st xfer.Stats, ok bool, err error) {
+	if j.ex == nil {
+		return
+	}
+	setScan := func(v bool) {
+		j.mu.Lock()
+		j.info.Scanning = v
+		j.mu.Unlock()
+		a.emitXfer(j)
+	}
+	var run func(total int64) (xfer.Stats, error)
+	var total int64
+	switch j.info.Dir {
+	case "down":
+		se, serr := j.src.Stat(j.srcPath)
+		if serr != nil || !se.IsDir {
+			return
+		}
+		if _, lerr := os.Lstat(j.dstPath); lerr == nil {
+			return // já existe: o motor normal pergunta/retoma arquivo por arquivo
+		}
+		setScan(true)
+		files, bytes, good, perr := xfer.TarProbe(ctx, j.ex, j.srcPath)
+		setScan(false)
+		if ctx.Err() != nil {
+			return xfer.Stats{}, true, ctx.Err()
+		}
+		if perr != nil || !good || files < xfer.MinTarFiles {
+			return
+		}
+		total = bytes
+		run = func(total int64) (xfer.Stats, error) {
+			return xfer.TarDownload(ctx, j.ex, j.srcPath, j.dstPath, total, progress)
+		}
+	case "up":
+		fi, lerr := os.Stat(j.srcPath)
+		if lerr != nil || !fi.IsDir() || pathpkg.Base(j.dstPath) != filepath.Base(j.srcPath) {
+			return
+		}
+		if _, derr := j.dst.Stat(j.dstPath); !errors.Is(derr, fs.ErrNotExist) {
+			return
+		}
+		files, bytes, serr := xfer.LocalScan(j.srcPath)
+		if serr != nil || files < xfer.MinTarFiles {
+			return
+		}
+		setScan(true)
+		good, perr := xfer.HasTar(ctx, j.ex)
+		setScan(false)
+		if ctx.Err() != nil {
+			return xfer.Stats{}, true, ctx.Err()
+		}
+		if perr != nil || !good {
+			return
+		}
+		total = bytes
+		run = func(total int64) (xfer.Stats, error) {
+			return xfer.TarUpload(ctx, j.ex, j.srcPath, pathpkg.Dir(j.dstPath), pathpkg.Base(j.dstPath), total, progress)
+		}
+	default:
+		return
+	}
+	st, err = run(total)
+	return st, true, err
 }

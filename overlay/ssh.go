@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -417,4 +418,41 @@ func dataDir() (string, error) {
 		os.Rename(filepath.Join(base, "GoTerm"), dir)
 	}
 	return dir, os.MkdirAll(dir, 0o700)
+}
+
+// execFn devolve uma função que roda comandos no servidor desta aba, ou nil se
+// a aba não é SSH (FTP não executa comandos). Serve ao modo tar das transferências.
+func (t *termSession) execFn() xfer.Exec {
+	if t == nil || t.ftp != nil {
+		return nil
+	}
+	return func(ctx context.Context, cmd string, stdin io.Reader, stdout, stderr io.Writer) error {
+		client, err := t.sshClient()
+		if err != nil {
+			return err
+		}
+		s, err := client.NewSession()
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+		s.Stdin, s.Stdout, s.Stderr = stdin, stdout, stderr
+		if err := s.Start(cmd); err != nil {
+			return err
+		}
+		done := make(chan error, 1)
+		go func() { done <- s.Wait() }()
+		select {
+		case err := <-done:
+			var ee *ssh.ExitError
+			if errors.As(err, &ee) {
+				return &xfer.ExitError{Code: ee.ExitStatus()}
+			}
+			return err
+		case <-ctx.Done():
+			s.Close()
+			<-done
+			return ctx.Err()
+		}
+	}
 }
