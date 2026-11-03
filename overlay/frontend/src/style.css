@@ -246,7 +246,9 @@ label.check { display: flex; align-items: center; gap: 7px; color: var(--text); 
 .pane-head { display: none; flex: none; font-size: 11px; padding: 2px 8px; background: var(--g-222222); color: var(--muted); }
 #stage.split .pane-head { display: block; }
 #stage.split .pane.focused .pane-head { background: var(--sel); color: #fff; }
-.term-host { flex: 1; min-height: 0; padding: 4px 0 0 6px; }
+/* o respiro fica no próprio .xterm: o FitAddon desconta o padding do terminal, não o do contêiner (com ele no contêiner, sobravam 4px de altura e a última linha ficava cortada) */
+.term-host { flex: 1; min-height: 0; padding: 0; }
+.term-host .xterm { padding: 4px 0 0 6px; }
 #home { display: block; overflow: auto; background: var(--g-161616); }
 
 .search-bar { position: absolute; top: 6px; right: 18px; z-index: 10; display: flex; gap: 4px; align-items: center; background: var(--g-2a2a2a); border: 1px solid var(--g-484848); border-radius: 6px; padding: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
